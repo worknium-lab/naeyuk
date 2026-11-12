@@ -4,6 +4,7 @@ import { Icon } from './icons';
 import { PROJECT } from '../data/project';
 import { useStore } from '../store';
 import { useAsk, canPrint } from './Ask';
+import { saveFile } from '../platform';
 
 /* ---------- 팝업 열기 (표준품셈 · 표준시장단가 · 참고 내역서) ---------- */
 export type PopupKind = 'pumsem' | 'market' | 'refcopy' | null;
@@ -32,15 +33,10 @@ function Menu() {
   const ask = useAsk();
   const fileRef = useRef<HTMLInputElement>(null);
   const [saveText, setSaveText] = useState<string | null>(null);
-  const save = () => {
+  const save = async () => {
     const text = JSON.stringify({ app: 'naeyuk', format: 1, saved: new Date().toISOString(), project: PROJECT.name, state: s });
-    if (canPrint()) {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-      a.download = `${PROJECT.name}.wnx`;
-      a.click();
-      toast('공사 파일(.wnx)을 내려받았습니다');
-    } else setSaveText(text);
+    if (await saveFile(`${PROJECT.name}.wnx`, text, canPrint())) toast('공사 파일(.wnx)을 내려받았습니다');
+    else setSaveText(text);
   };
   const load = async (f: File) => {
     try {
@@ -158,6 +154,12 @@ function WorkTabs({ set }: { set: TabSet }) {
   );
 }
 
+function SaveBadge() {
+  const { saveWhere } = useStore();
+  const t = saveWhere === 'account' ? '내 계정에 저장됨' : saveWhere === 'saving' ? '저장 중…' : '이 브라우저에 저장';
+  return <span style={{ opacity: 0.85 }} title="입력한 내용이 저장되는 곳">{t}</span>;
+}
+
 /* ---------- 화면 틀 ---------- */
 export function Shell({ doc, toolbar, info, left, right, children, tabs = 'work', footer, mainClass = 'main' }: {
   doc: string;
@@ -174,6 +176,7 @@ export function Shell({ doc, toolbar, info, left, right, children, tabs = 'work'
     <div className="app">
       <div className="titlebar">
         <span style={{ flex: 1 }}>[{PROJECT.file}] {doc}</span>
+        <SaveBadge />
         <Link to="/m" title="모바일 화면 보기">모바일</Link>
       </div>
       <Menu />

@@ -5,6 +5,8 @@ import {
 } from './engine';
 import { designSheet, PROJECT } from './data/project';
 import { basisData } from './data/basisData';
+import { remoteStore, type Remote } from './platform';
+import { useRef } from 'react';
 
 export interface Subcontract {
   id: string;
@@ -108,6 +110,8 @@ interface Ctx {
   units: Map<string, UnitCalc>;
   toast: (msg: string) => void;
   editLine: (id: string, patch: Partial<Line>) => void;
+  /** 어디에 저장되는지 */
+  saveWhere: 'local' | 'account' | 'saving';
 }
 
 const C = createContext<Ctx | null>(null);
@@ -122,6 +126,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       /* 저장 못 해도 화면은 계속 */
     }
   }, [s]);
+  // claude.ai에서 열면 내 계정 저장소에도 둔다 (다른 기기에서도 이어서)
+  const remote = useRef<Remote | null>(null);
+  const written = useRef<Record<string, string>>({});
+  const [saveWhere, setSaveWhere] = useState<'local' | 'account' | 'saving'>('local');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const r = await remoteStore(Object.keys(initial()));
+      if (!alive || !r) return;
+      try {
+        const got = await r.load();
+        if (got) {
+          for (const [k, v] of Object.entries(got)) written.current[k] = JSON.stringify(v);
+          setS((cur) => ({ ...cur, ...(got as Partial<State>) }));
+        }
+        remote.current = r;
+        setSaveWhere('account');
+      } catch {
+        /* 계정 저장소를 못 쓰면 이 브라우저에만 */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    const r = remote.current;
+    if (!r) return;
+    const t = setTimeout(async () => {
+      const dirty = Object.entries(s).filter(([k, v]) => written.current[k] !== JSON.stringify(v));
+      if (!dirty.length) return;
+      setSaveWhere('saving');
+      for (const [k, v] of dirty) {
+        const j = JSON.stringify(v);
+        try { await r.save(k, v); written.current[k] = j; } catch { /* 다음 변경 때 다시 */ }
+      }
+      setSaveWhere('account');
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [s, saveWhere === 'local']); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(null), 2600);
@@ -135,7 +177,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setS((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }, []);
   const value: Ctx = {
-    s, set, design, start, units, editLine,
+    s, set, design, start, units, editLine, saveWhere,
     reset: () => setS(initial()),
     toast: (m) => setMsg(m),
   };
