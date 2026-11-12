@@ -21,7 +21,7 @@ button { font: inherit; }
 .titlebar { display: flex; align-items: center; height: 26px; padding: 0 10px; background: var(--accent); color: #fff; font-size: 12px; flex-shrink: 0; gap: 12px; }
 .titlebar a { color: #fff; text-decoration: none; }
 .menu { display: flex; align-items: center; height: 26px; padding: 0 4px; background: #fff; border-bottom: 1px solid var(--line2); flex-shrink: 0; position: relative; }
-.menu > div { position: relative; }
+.menu > div.mi { position: relative; }
 .menu > div > button { height: 24px; padding: 0 9px; border: 0; background: transparent; font-size: 13px; cursor: pointer; }
 .menu > div > button:hover, .menu > div > button.on { background: var(--hover); }
 .dd { position: absolute; top: 24px; left: 0; min-width: 220px; background: #fff; border: 1px solid #8A929E; box-shadow: 2px 3px 8px rgba(0,0,0,.18); z-index: 50; padding: 3px 0; }

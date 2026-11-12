@@ -88,20 +88,11 @@ function Menu() {
     도움말: [{ label: '테스트 순서 (처음 쓰는 분)', to: '/guide' }, { label: 'WORKNIUM 적산 웹 프로토타입 v0.3', act: () => {} }],
   };
   return (
+    <>
     <div className="menu" role="menubar" aria-label="주메뉴" ref={ref}>
       <input ref={fileRef} type="file" accept=".wnx,.json" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f); e.target.value = ''; }} />
-      {saveText && (
-        <Win title="공사 파일 저장" onClose={() => setSaveText(null)} w={640} h={420}
-          buttons={<>
-            <span className="grow">이 창에서는 파일 내려받기가 막혀 있습니다. 복사해서 메모장에 붙여 넣고 .wnx로 저장하세요.</span>
-            <button type="button" className="btn" onClick={() => setSaveText(null)}>닫기</button>
-            <button type="button" className="btn pri" onClick={async () => { try { await navigator.clipboard.writeText(saveText); toast('복사했습니다'); } catch { toast('복사가 막혔습니다 — 글을 선택해 Ctrl+C 하세요'); } }}>복사</button>
-          </>}>
-          <textarea readOnly value={saveText} style={{ flex: 1, margin: 10, fontFamily: 'monospace', fontSize: 11 }} onFocus={(e) => e.target.select()} />
-        </Win>
-      )}
       {Object.entries(menus).map(([name, items]) => (
-        <div key={name}>
+        <div key={name} className="mi">
           <button type="button" className={open === name ? 'on' : ''} onClick={() => setOpen(open === name ? null : name)} aria-haspopup="menu" aria-expanded={open === name}>{name}</button>
           {open === name && (
             <div className="dd" role="menu">
@@ -115,6 +106,17 @@ function Menu() {
         </div>
       ))}
     </div>
+      {saveText && (
+        <Win title="공사 파일 저장" onClose={() => setSaveText(null)} w={640} h={420}
+          buttons={<>
+            <span className="grow">이 창에서는 파일 내려받기가 막혀 있습니다. 복사해서 메모장에 붙여 넣고 .wnx로 저장하세요.</span>
+            <button type="button" className="btn" onClick={() => setSaveText(null)}>닫기</button>
+            <button type="button" className="btn pri" onClick={async () => { try { await navigator.clipboard.writeText(saveText); toast('복사했습니다'); } catch { toast('복사가 막혔습니다 — 글을 선택해 Ctrl+C 하세요'); } }}>복사</button>
+          </>}>
+          <textarea readOnly value={saveText} style={{ flex: 1, margin: 10, fontFamily: 'monospace', fontSize: 11 }} onFocus={(e) => e.target.select()} />
+        </Win>
+      )}
+    </>
   );
 }
 
