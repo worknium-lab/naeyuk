@@ -6,7 +6,7 @@ import { useDocs } from '../docs';
 import { flatten, won, qtyFmt, unassigned, floor, lineAmount, type Line } from '../engine';
 
 export default function Phase() {
-  const { s, set, start, toast } = useStore();
+  const { s, set, contract: start, toast } = useStore();
   const docs = useDocs();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<string>('G13');
@@ -84,7 +84,7 @@ export default function Phase() {
         </Group>
       </>}
       info={<>
-        <span><span className="k">기준</span> 착공내역서</span>
+        <span><span className="k">기준</span> {s.changeConfirmed ? `설계변경 ${s.change.name} (확정)` : '착공내역서'}</span>
         <div className="vg">
           <button type="button" className="vb" onClick={() => setCollapsed(new Set())}>모두 펼침</button>
           <button type="button" className="vb" onClick={() => setCollapsed(new Set(rows.filter((r) => r.line.children && r.depth >= 1).map((r) => r.line.id)))}>공종까지</button>

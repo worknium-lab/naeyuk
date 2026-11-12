@@ -62,7 +62,7 @@ export default function Change() {
           </table>
           <div className="calc"><div className="r"><span>도급액 증감</span><b>{D(before.cost.total, after.cost.total) || '0'}</b></div>
             <div className="r"><span>바뀐 항목</span><span>{changedIds.size}개</span></div></div>
-          <div className="hint">확정하면 차수·기성의 기준 수량이 변경 수량으로 바뀝니다 (다음 단계). 준공내역서는 확정된 설계변경을 기준으로 만듭니다.</div>
+          <div className="hint">확정하면 차수·기성의 기준 수량이 변경 수량으로 바뀝니다 (신규 항목은 차수에서 미배정으로 나옵니다). 준공내역서는 확정된 설계변경을 기준으로 만듭니다.</div>
         </aside>
       }
       footer={<><span>당초 {won(before.cost.total)}</span><span>변경 {won(after.cost.total)}</span><span>증감 {D(before.cost.total, after.cost.total) || '0'}</span></>}

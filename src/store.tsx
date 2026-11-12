@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits,
+  applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits, changeSheet,
   type Basis, type UnitCalc, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
 import { designSheet, PROJECT } from './data/project';
@@ -107,6 +107,8 @@ interface Ctx {
   /** 근거를 반영한 설계내역서 */
   design: Sheet;
   start: Sheet;
+  /** 차수·기성의 기준 — 설계변경을 확정하면 변경 내역서 */
+  contract: Sheet;
   units: Map<string, UnitCalc>;
   toast: (msg: string) => void;
   editLine: (id: string, patch: Partial<Line>) => void;
@@ -172,12 +174,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const units = useMemo(() => computeUnits(s.basis), [s.basis]);
   const design = useMemo(() => resolveSheet(s.design, s.basis, units), [s.design, s.basis, units]);
   const start = useMemo(() => applyRate(design, s.bidRate, { skipSupplied: true }), [design, s.bidRate]);
+  const contract = useMemo(() => (s.changeConfirmed ? changeSheet(start, s.change, s.bidRate) : start), [start, s.changeConfirmed, s.change, s.bidRate]);
   const set = useCallback((fn: (s: State) => State) => setS(fn), []);
   const editLine = useCallback((id: string, patch: Partial<Line>) => {
     setS((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }, []);
   const value: Ctx = {
-    s, set, design, start, units, editLine, saveWhere,
+    s, set, design, start, contract, units, editLine, saveWhere,
     reset: () => setS(initial()),
     toast: (m) => setMsg(m),
   };

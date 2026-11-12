@@ -9,7 +9,7 @@ import { useDocs } from '../docs';
 import { flatten, won, qtyFmt, lineAmount, pct, type Line } from '../engine';
 
 export default function Progress() {
-  const { s, set, start, toast } = useStore();
+  const { s, set, contract: start, toast } = useStore();
   const docs = useDocs();
   const [params] = useSearchParams();
   const host = params.get('host') === '1';
@@ -71,7 +71,7 @@ export default function Progress() {
             {s.rounds.map((r, i) => <option key={r.name} value={i}>{r.name} ({r.status})</option>)}
           </select>
         </label>
-        <span><span className="k">기준</span> {s.phaseOn ? '차수 총괄 (착공내역서)' : '착공내역서'}</span>
+        <span><span className="k">기준</span> {s.changeConfirmed ? `설계변경 ${s.change.name} (확정)` : s.phaseOn ? '차수 총괄 (착공내역서)' : '착공내역서'}</span>
         {locked && <span className="cf">확정된 회차라 수량을 고칠 수 없습니다</span>}
         {over.length > 0 && <span style={{ color: '#C00000' }}>계약 수량 초과 {over.length}항목</span>}
         <div style={{ flex: 1 }} />

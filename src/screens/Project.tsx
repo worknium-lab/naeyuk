@@ -11,12 +11,12 @@ import { won, allLines, unassigned, pct } from '../engine';
 type DocKey = 'design' | 'start' | 'phase' | 'progress' | 'change' | 'sub' | 'final';
 
 export default function Project() {
-  const { s, set, start, toast } = useStore();
+  const { s, set, contract, toast } = useStore();
   const docs = useDocs();
   const nav = useNavigate();
   const [sel, setSel] = useState<DocKey>('start');
 
-  const items = allLines(start).filter((l) => !l.children);
+  const items = allLines(contract).filter((l) => !l.children);
   const unassignedCount = items.filter((l) => Math.abs(unassigned(l, s.alloc)) > 1e-6).length;
   const cur = s.rounds.length - 1;
   const cumDone = items.every((l) => Math.abs((s.progress[l.id] ?? []).slice(0, cur + 1).reduce((a, b) => a + b, 0) - l.qty) < 1e-6);
