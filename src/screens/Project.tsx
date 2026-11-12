@@ -42,8 +42,7 @@ export default function Project() {
     </a>
   );
   const open = (k: DocKey) => {
-    const to: Record<DocKey, string> = { design: '/estimate', start: '/estimate?doc=start', phase: '/phase', progress: '/progress', change: '/project', sub: '/sub', final: '/project' };
-    if (k === 'change') { toast('설계변경 내역서는 다음 단계에서 붙입니다'); return; }
+    const to: Record<DocKey, string> = { design: '/estimate', start: '/estimate?doc=start', phase: '/phase', progress: '/progress', change: '/change', sub: '/sub', final: '/project' };
     if (k === 'final') { finalReady ? toast('준공내역서를 만들었습니다') : toast(`준공 조건 ${conds.length}개 중 ${okCount}개 충족`); return; }
     nav(to[k]);
   };
@@ -53,7 +52,7 @@ export default function Project() {
     start: { title: '착공내역서', rows: [['기준 문서', '설계내역서'], ['낙찰률', `${+(s.bidRate * 100).toFixed(3)}%`], ['도급액', won(S)], ['단수 맞춤', '계약금액에 맞춰 이윤에서 조정']], make: [['차수별 내역서', '/phase'], ['기성내역서 회차 추가', '/progress'], ['하도급내역서', '/sub']] },
     phase: { title: '차수별 내역서', rows: [['기준 문서', '착공내역서'], ['차수', s.phases.map((p) => p.name).join(' · ')], ['미배정', `${unassignedCount}항목`]] },
     progress: { title: '기성내역서', rows: [['기준 문서', s.phaseOn ? '차수별 내역서' : '착공내역서'], ['회차', s.rounds.map((r) => r.name).join(' · ')], ['누계', pct(cumRate, 1, 1)]] },
-    change: { title: '설계변경 내역서', rows: [['기준 문서', '착공내역서'], ['구성', '당초 · 변경 · 증감'], ['신규 단가', '설계단가 × 낙찰률']] },
+    change: { title: '설계변경 내역서', rows: [['기준 문서', '착공내역서'], ['구성', '당초 · 변경 · 증감'], ['신규 단가', '설계단가 × 낙찰률'], ['도급액 증감', won(docs.get('change').cost.total - S, { tri: false, zero: '0' })]], make: [['설계변경 내역서 열기', '/change'], ['변경 원가계산서', '/cost?doc=change']] },
     sub: { title: '하도급내역서', rows: [['기준 문서', '착공내역서'], ['업체', docs.subs.map((x) => x.sub.vendor).join(', ')], ['하도급율', docs.subs.map((x) => `${(x.sub.rate * 100).toFixed(1)}%`).join(', ')]], make: [['원·하도급 대비내역서', '/sub/compare']] },
     final: { title: '준공내역서', rows: [['기준 문서', '착공 + 확정된 설계변경'], ['상태', `조건 ${conds.length}개 중 ${okCount}개 충족`]] },
   };
@@ -71,7 +70,7 @@ export default function Project() {
         <Group label="착공내역서에서 만드는 문서">
           <FB icon="phase" label="차수별" to="/phase" />
           <FB icon="chart" label="기성" to="/progress" />
-          <FB icon="swap" label="설계변경" onClick={() => open('change')} />
+          <FB icon="swap" label="설계변경" to="/change" />
           <FB icon="link" label="하도급" to="/sub" title="하도급내역서 (공종 선택 → 하도급율 적용)" />
         </Group>
         <Group label="마무리">

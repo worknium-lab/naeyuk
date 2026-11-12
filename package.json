@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p . && vite build",
+    "build:single": "tsc -p . && vite build && node scripts/inline.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

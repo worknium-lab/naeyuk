@@ -11,6 +11,8 @@ import Phase from './screens/Phase';
 import Progress from './screens/Progress';
 import Subcontract from './screens/Subcontract';
 import SubCompare from './screens/SubCompare';
+import Change from './screens/Change';
+import Guide from './screens/Guide';
 import { UnitCost, Calc, Machine, Material, Labor } from './screens/Basis';
 import { Pumsem, MarketPrice, RefCopy } from './screens/Popups';
 import { MobileHome, MobileEstimate, MobileCost } from './screens/Mobile';
@@ -35,6 +37,8 @@ export default function App() {
             <Route path="/progress" element={<Progress />} />
             <Route path="/sub" element={<Subcontract />} />
             <Route path="/sub/compare" element={<SubCompare />} />
+            <Route path="/change" element={<Change />} />
+            <Route path="/guide" element={<Guide />} />
             <Route path="/unit" element={<UnitCost />} />
             <Route path="/calc" element={<Calc />} />
             <Route path="/machine" element={<Machine />} />

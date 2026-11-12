@@ -46,6 +46,7 @@ export default function Main() {
         <span><span className="k">작업 폴더</span> D:\적산\Data</span>
         <span><span className="k">단가 기준</span> 2026년 하반기 (노임 2026.9 공표)</span>
         <div style={{ flex: 1 }} />
+        <button type="button" className="btn pri" style={{ height: 26 }} onClick={() => nav('/guide')}>테스트 순서 보기</button>
         <span className="k">공사를 두 번 누르면 엽니다</span>
       </>}
       left={

@@ -6,3 +6,4 @@ export * from './subcontract';
 export * from './phase';
 export * from './progress';
 export * from './basis';
+export * from './change';

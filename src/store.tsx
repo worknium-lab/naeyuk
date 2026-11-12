@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits,
-  type Basis, type UnitCalc, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
+  type Basis, type UnitCalc, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
 import { designSheet, PROJECT } from './data/project';
 import { basisData } from './data/basisData';
@@ -41,6 +41,7 @@ export interface State {
   changeConfirmed: boolean;
   rates: Partial<CostRates>;
   basis: Basis;
+  change: ChangeOrder;
 }
 
 const KEY = 'naeyuk.v2';
@@ -83,6 +84,7 @@ function initial(): State {
     changeConfirmed: false,
     rates: {},
     basis,
+    change: { name: '변경 1회', qty: { L24: 760, L27: 92, L31: 28 }, added: [] },
   };
 }
 

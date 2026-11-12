@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
 import { PROJECT } from '../data/project';
 import { useStore } from '../store';
-import { useAsk } from './Ask';
+import { useAsk, canPrint } from './Ask';
 
 /* ---------- 팝업 열기 (표준품셈 · 표준시장단가 · 참고 내역서) ---------- */
 export type PopupKind = 'pumsem' | 'market' | 'refcopy' | null;
@@ -28,11 +28,38 @@ type MenuItem = { label: string; to?: string; key?: string; act?: () => void } |
 
 function Menu() {
   const nav = useNavigate();
-  const { reset, toast } = useStore();
+  const { reset, toast, s, set } = useStore();
   const ask = useAsk();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [saveText, setSaveText] = useState<string | null>(null);
+  const save = () => {
+    const text = JSON.stringify({ app: 'naeyuk', format: 1, saved: new Date().toISOString(), project: PROJECT.name, state: s });
+    if (canPrint()) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = `${PROJECT.name}.wnx`;
+      a.click();
+      toast('공사 파일(.wnx)을 내려받았습니다');
+    } else setSaveText(text);
+  };
+  const load = async (f: File) => {
+    try {
+      const j = JSON.parse(await f.text());
+      if (j.app !== 'naeyuk' || !j.state) throw new Error('형식');
+      set((cur) => ({ ...cur, ...j.state }));
+      toast(`${f.name}을(를) 열었습니다`);
+    } catch {
+      toast('이 프로그램에서 저장한 공사 파일(.wnx)이 아닙니다');
+    }
+  };
   const { open: openPopup } = usePopup();
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  });
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(null); };
     document.addEventListener('mousedown', h);
@@ -41,6 +68,7 @@ function Menu() {
   const menus: Record<string, MenuItem[]> = {
     파일: [
       { label: '공사 목록', to: '/' }, { label: '프로젝트 홈', to: '/project' }, '-',
+      { label: '공사 파일 열기…', act: () => fileRef.current?.click() }, { label: '공사 파일 저장 (.wnx)', key: 'Ctrl+S', act: save }, '-',
       { label: '다른 내역서 열기 (참고)', act: () => openPopup('refcopy') }, '-',
       { label: '예시 데이터로 되돌리기', act: async () => { if (await ask({ title: '예시 데이터로 되돌리기', label: '입력한 내용을 지우고 예시 데이터로 되돌릴까요?', confirmOnly: true, ok: '되돌리기' })) { reset(); toast('예시 데이터로 되돌렸습니다'); } } },
       { label: '모바일 화면', to: '/m' },
@@ -50,17 +78,28 @@ function Menu() {
     재계산: [{ label: '일건서류 전체재계산', key: 'F9', act: () => toast('전체재계산했습니다 — 모든 문서가 같은 엔진으로 다시 계산됩니다') }],
     원가계산서: [{ label: '원가계산서', to: '/cost' }],
     차수공사: [{ label: '차수별 내역서 (분개)', to: '/phase' }],
-    설계변경: [{ label: '프로젝트 홈에서 변경 회차 관리', to: '/project' }],
+    설계변경: [{ label: '설계변경 내역서 (당초·변경·증감)', to: '/change' }, { label: '변경 원가계산서', to: '/cost?doc=change' }],
     작업도구: [
       { label: '표준품셈 검색', act: () => openPopup('pumsem') }, { label: '표준시장단가 검색', act: () => openPopup('market') }, '-',
       { label: '자재단가', to: '/material' }, { label: '노임단가', to: '/labor' }, { label: '기계경비', to: '/machine' },
     ],
     양식도구: [{ label: '하도급내역서', to: '/sub' }, { label: '원·하도급 대비내역서', to: '/sub/compare' }],
     작업모드: [{ label: '기성내역서', to: '/progress' }, { label: '통합 모드로 보기', to: '/progress?host=1' }],
-    도움말: [{ label: 'WORKNIUM 적산 웹 프로토타입 v0.1', act: () => {} }],
+    도움말: [{ label: '테스트 순서 (처음 쓰는 분)', to: '/guide' }, { label: 'WORKNIUM 적산 웹 프로토타입 v0.3', act: () => {} }],
   };
   return (
     <div className="menu" role="menubar" aria-label="주메뉴" ref={ref}>
+      <input ref={fileRef} type="file" accept=".wnx,.json" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f); e.target.value = ''; }} />
+      {saveText && (
+        <Win title="공사 파일 저장" onClose={() => setSaveText(null)} w={640} h={420}
+          buttons={<>
+            <span className="grow">이 창에서는 파일 내려받기가 막혀 있습니다. 복사해서 메모장에 붙여 넣고 .wnx로 저장하세요.</span>
+            <button type="button" className="btn" onClick={() => setSaveText(null)}>닫기</button>
+            <button type="button" className="btn pri" onClick={async () => { try { await navigator.clipboard.writeText(saveText); toast('복사했습니다'); } catch { toast('복사가 막혔습니다 — 글을 선택해 Ctrl+C 하세요'); } }}>복사</button>
+          </>}>
+          <textarea readOnly value={saveText} style={{ flex: 1, margin: 10, fontFamily: 'monospace', fontSize: 11 }} onFocus={(e) => e.target.select()} />
+        </Win>
+      )}
       {Object.entries(menus).map(([name, items]) => (
         <div key={name}>
           <button type="button" className={open === name ? 'on' : ''} onClick={() => setOpen(open === name ? null : name)} aria-haspopup="menu" aria-expanded={open === name}>{name}</button>

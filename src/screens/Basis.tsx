@@ -290,7 +290,8 @@ export function Material() {
   const mats = Object.values(s.basis.mats);
   const [sel, setSel] = useState(mats[0]?.key ?? '');
   const m = s.basis.mats[sel];
-  const src = m ? ref.find((r) => normName(r[1]) === normName(m.name)) : undefined;
+  const findSrc = (name: string, spec: string) => ref.find((r) => normName(r[1]) === normName(name) && normName(r[2]) === normName(spec)) ?? ref.find((r) => normName(r[1]) === normName(name) && !r[2]);
+  const src = m ? findSrc(m.name, m.spec) : undefined;
   const SRC = ['가격정보', '물가자료', '유통물가', '물가정보', '거래가격', '견적가1'];
   const prices = src ? SRC.map((name, k) => ({ name, price: src[4 + k * 2], page: src[5 + k * 2] })).filter((x) => x.price) : [];
   const setPrice = (key: string, price: number) => set((st) => ({ ...st, basis: { ...st.basis, mats: { ...st.basis.mats, [key]: { ...st.basis.mats[key], price } } } }));
@@ -333,7 +334,7 @@ export function Material() {
           <thead><tr><th>No</th><th>품     명</th><th>규   격</th><th>단위</th><th>적용단가</th><th>출처 단가</th><th>사용처</th></tr></thead>
           <tbody>
             {mats.map((x, i) => {
-              const r = ref.find((rr) => normName(rr[1]) === normName(x.name));
+              const r = findSrc(x.name, x.spec);
               return (
                 <tr key={x.key} className={'click' + (sel === x.key ? ' sel' : '')} onClick={() => setSel(x.key)}>
                   <td className="c">{i + 1}</td><td>{x.name}</td><td>{x.spec}</td><td className="c">{x.unit}</td>

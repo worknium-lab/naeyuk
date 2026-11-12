@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useStore } from './store';
 import {
-  costSheet, phaseSheet, progressSheet, sectionAmount, buildSubcontract,
+  costSheet, phaseSheet, progressSheet, sectionAmount, buildSubcontract, changeSheet,
   type CostResult, type Sheet,
 } from './engine';
 
@@ -26,7 +26,7 @@ export function useDocs() {
         ...opts,
       }),
     });
-    const list: DocInfo[] = [mk('design', '설계내역서', design), mk('start', '착공내역서', start)];
+    const list: DocInfo[] = [mk('design', '설계내역서', design), mk('start', '착공내역서', start), mk('change', `설계변경 내역서 ${s.change.name}`, changeSheet(start, s.change, s.bidRate))];
     if (s.phaseOn) s.phases.forEach((p, i) => list.push(mk(`phase${i}`, `${p.name} 내역서 (${p.year})`, phaseSheet(start, s.alloc, i))));
     if (s.progressOn) {
       const cur = s.rounds.length - 1;
