@@ -194,3 +194,4 @@ table.f select { height: 20px; border: 1px solid var(--line); font-family: 'Malg
 table.f td.sp { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 table.f td.nm { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
 .doc { gap: 1px; line-height: 1.4; padding: 6px 10px; }
+.vb:disabled { color: #A9AFB8; cursor: default; background: #fff; }

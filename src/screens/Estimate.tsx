@@ -11,11 +11,13 @@ type Field = 'name' | 'spec' | 'unit' | 'qty' | 'lu' | 'mu' | 'eu';
 
 interface Row { kind: 'line' | 'ns' | 'blank'; r?: FlatRow }
 
-function buildRows(sheet: Sheet, collapsed: Set<string>): Row[] {
+/** lv: 0 = 모두, n = 레벨 n 이상 줄만 (● 3 > ○ 2 > …) */
+function buildRows(sheet: Sheet, collapsed: Set<string>, lv: number): Row[] {
   const out: Row[] = [];
   for (const sec of sheet.sections) {
     for (const fr of flatten(sec.lines)) {
-      if (fr.ancestors.some((a) => collapsed.has(a))) continue;
+      if (lv > 0 && (fr.line.level || 0) < lv) continue;
+      if (lv === 0 && fr.ancestors.some((a) => collapsed.has(a))) continue;
       out.push({ kind: 'line', r: fr });
     }
     if (sec.section === 'main') {
@@ -44,16 +46,13 @@ export default function Estimate() {
   const [find, setFind] = useState('');
   const findRef = useRef<HTMLInputElement>(null);
 
-  const rows = useMemo(() => buildRows(sheet, collapsed), [sheet, collapsed]);
+  const [lvView, setLvView] = useState(0);
+  const rows = useMemo(() => buildRows(sheet, collapsed, lvView), [sheet, collapsed, lvView]);
+  const levelsUsed = useMemo(() => new Set(sheet.sections.flatMap((x) => flatten(x.lines)).map((r) => r.line.level).filter(Boolean)), [sheet]);
   const allCount = useMemo(() => sheet.sections.reduce((n, x) => n + flatten(x.lines).length, 0), [sheet]);
   const main = sectionAmount(sheet, 'main');
   const cost = costSheet({ direct: main, waste: sectionAmount(sheet, 'waste').t, supplied: sectionAmount(sheet, 'supplied').t });
 
-  const groupIds = (depthMin: number) => {
-    const ids = new Set<string>();
-    for (const sec of sheet.sections) for (const fr of flatten(sec.lines)) if (fr.line.children && fr.depth >= depthMin) ids.add(fr.line.id);
-    return ids;
-  };
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -180,9 +179,12 @@ export default function Estimate() {
       </>}
       info={<>
         <div className="vg" role="group" aria-label="펼침 단계">
-          <button type="button" className="vb" onClick={() => setCollapsed(new Set())}>모두 펼침</button>
-          <button type="button" className="vb" onClick={() => setCollapsed(groupIds(1))}>공종까지</button>
-          <button type="button" className="vb" onClick={() => setCollapsed(groupIds(0))}>공사까지</button>
+          <button type="button" className={'vb' + (lvView === 0 ? ' on' : '')} onClick={() => { setLvView(0); setCollapsed(new Set()); }}>모두 펼침</button>
+          {[4, 3, 2, 1].map((n) => (
+            <button key={n} type="button" className={'vb' + (lvView === n ? ' on' : '')} disabled={!levelsUsed.has(n as Line['level'])}
+              title={levelsUsed.has(n as Line['level']) ? `L ${n} 이상인 줄만 보기` : `L ${n}로 지정한 줄이 없습니다`}
+              onClick={() => setLvView(n)}>레벨 {n}</button>
+          ))}
         </div>
         <label>문서
           <select value={doc} style={{ fontWeight: 700 }} onChange={(e) => {
@@ -256,7 +258,7 @@ export default function Estimate() {
               {grp ? (
                 <div className="b" style={{ paddingLeft: 2 + fr.depth * 10 }} onDoubleClick={() => !needDesign() && setEdit({ id: l.id, f: 'name' })}>
                   <button type="button" className="tg" aria-expanded={isOpen} aria-label={(isOpen ? '접기: ' : '펼치기: ') + l.name}
-                    onClick={(e) => { e.stopPropagation(); const n = new Set(collapsed); if (isOpen) n.add(l.id); else n.delete(l.id); setCollapsed(n); }}>{isOpen ? '▾' : '▸'}</button>
+                    onClick={(e) => { e.stopPropagation(); if (lvView) { setLvView(0); setCollapsed(new Set()); return; } const n = new Set(collapsed); if (isOpen) n.add(l.id); else n.delete(l.id); setCollapsed(n); }}>{isOpen && !lvView ? '▾' : '▸'}</button>
                   {edit && edit.id === l.id && edit.f === 'name'
                     ? <input className="cell" style={{ width: 'calc(100% - 26px)' }} autoFocus defaultValue={l.name} onBlur={(e) => commit(l.id, 'name', e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
                     : l.name}
