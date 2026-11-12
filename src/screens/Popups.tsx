@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Win } from '../ui/Shell';
 import { useStore } from '../store';
-import { won, flatten, insertAfter, newId, floor, type Line } from '../engine';
+import { useNavigate } from 'react-router-dom';
+import { won, flatten, insertAfter, newId, floor, type Line, type ULine, type UnitDef } from '../engine';
+
+const nextUnitNo = (units: UnitDef[]) => Math.max(0, ...units.map((u) => Number(u.no.replace(/\D/g, '')) || 0)) + 1;
 import tables from '../data/tables.json';
 import { REF_PROJECT, REF_BASIS, CURRENT_LABOR, CURRENT_MATERIAL, LABOR_INDEX } from '../data/reference';
 
@@ -15,6 +18,7 @@ const PUMSEM_TOC = [
 
 export function Pumsem({ onClose }: { onClose: () => void }) {
   const { set, toast, s } = useStore();
+  const nav = useNavigate();
   const [grade, setGrade] = useState<'A' | 'B'>('A');
   const [q, setQ] = useState('재도장 바탕처리 철재');
   const area = grade === 'A' ? 20 : 60;
@@ -28,9 +32,15 @@ export function Pumsem({ onClose }: { onClose: () => void }) {
   ];
   const L = floor(l1 + l2), M = floor(tool);
   const make = () => {
-    const no = `제${19 + s.imported.length}호표`;
-    set((st) => ({ ...st, imported: [...st.imported, { no, name: '재도장 시 바탕처리', spec: `철재면 (${grade}급)`, unit: '㎡', l: L, m: M, e: 0, from: '품셈 유지관리 3-3-2' }] }));
-    toast(`${no} 재도장 시 바탕처리를 만들었습니다 — 일위대가 탭에서 볼 수 있습니다`);
+    const no = `제${nextUnitNo(s.basis.units)}호표`;
+    const lines: ULine[] = [
+      { id: `${no}-1`, kind: 'labor', ref: '도장공', name: '도 장 공', spec: '', unit: '인', qty: +(2 / area).toFixed(4), note: `2인/${area}㎡` },
+      { id: `${no}-2`, kind: 'labor', ref: '보통인부', name: '보통인부', spec: '', unit: '인', qty: +(1 / area).toFixed(4), note: `1인/${area}㎡` },
+      { id: `${no}-3`, kind: 'pct', col: 'm', name: '공구손료 및 잡재료비(연마지)', spec: '노무비의', unit: '%', qty: 3 },
+    ];
+    set((st) => ({ ...st, basis: { ...st.basis, units: [...st.basis.units, { no, name: '재도장 시 바탕처리', spec: `철재면 (${grade}급)`, unit: '㎡', lines, from: '품셈 유지관리 3-3-2' }] } }));
+    toast(`${no} 재도장 시 바탕처리를 만들었습니다 — 노임은 현재 공사 노임단가에 연결됩니다`);
+    nav(`/unit?no=${no}`);
     onClose();
   };
   return (
@@ -199,9 +209,10 @@ export function RefCopy({ onClose }: { onClose: () => void }) {
     return { units: [...units], calcs: [...calcs], labor: [...labor], mat: [...mat] };
   }, [picked]);
 
-  const startNo = 19 + s.imported.filter((u) => /^제\d+호표$/.test(u.no)).length;
+  const startNo = nextUnitNo(s.basis.units);
   const renumber = new Map<string, string>(deps.units.map((u, i) => [u, `제${startNo + i}호표`]));
-  const calcNo = new Map<string, string>(deps.calcs.map((c, i) => [c, `단산${11 + i}`]));
+  const calcStart = Math.max(0, ...s.basis.calcs.map((c) => Number(c.no.replace(/\D/g, '')) || 0)) + 1;
+  const calcNo = new Map<string, string>(deps.calcs.map((c, i) => [c, `단산${calcStart + i}`]));
   const laborConflict = deps.labor.filter((x) => CURRENT_LABOR[x]);
   const matLinked = deps.mat.filter((x) => CURRENT_MATERIAL.includes(x));
   const total = deps.units.length + deps.calcs.length + deps.labor.length + deps.mat.length;
@@ -212,19 +223,37 @@ export function RefCopy({ onClose }: { onClose: () => void }) {
       let lu = l.lu;
       if (withBasis && priceMode === 'current') lu = floor(l.lu * LABOR_INDEX);
       const ref = l.ref ? (renumber.get(l.ref) ?? calcNo.get(l.ref) ?? l.ref) : undefined;
-      return { ...l, id: newId('r'), qty: zeroQty ? 0 : l.qty, lu, ref: withBasis ? ref : undefined, note: '참고: 국도3호선 ○○교' };
+      const isUnit = !!(l.ref && (renumber.has(l.ref) || calcNo.has(l.ref)));
+      return { ...l, id: newId('r'), qty: zeroQty ? 0 : l.qty, lu, ref: withBasis ? ref : undefined, link: withBasis && isUnit, note: '참고: 국도3호선 ○○교' };
     });
     set((st) => ({
       ...st,
       design: insertAfter(st.design, target, items),
-      imported: withBasis ? [
-        ...st.imported,
-        ...deps.units.map((u) => {
-          const b = REF_BASIS[u];
-          const lf = priceMode === 'current' ? LABOR_INDEX : 1;
-          return { no: renumber.get(u)!, name: b.name, spec: b.spec, unit: b.unit, l: floor(b.l * lf), m: b.m, e: b.e, from: `국도3호선 ○○교 ${u}${priceMode === 'keep' ? ' · 참고 단가(2022상)' : ' · 노임 2026하 적용'}` };
-        }),
-      ] : st.imported,
+      basis: withBasis ? {
+        ...st.basis,
+        units: [
+          ...st.basis.units,
+          ...deps.units.map((u): UnitDef => {
+            const b = REF_BASIS[u];
+            const lf = priceMode === 'current' ? LABOR_INDEX : 1;
+            const no = renumber.get(u)!;
+            const lines: ULine[] = [
+              { id: `${no}-l`, kind: 'fixed', col: 'l', name: '노무비 (참고 호표)', spec: '', unit: '식', qty: 1, amt: floor(b.l * lf) },
+              { id: `${no}-m`, kind: 'fixed', col: 'm', name: '재료비 (참고 호표)', spec: '', unit: '식', qty: 1, amt: b.m },
+              { id: `${no}-e`, kind: 'fixed', col: 'e', name: '경비 (참고 호표)', spec: '', unit: '식', qty: 1, amt: b.e },
+            ].filter((x) => x.amt) as ULine[];
+            return { no, name: b.name, spec: b.spec, unit: b.unit, lines, from: `국도3호선 ○○교 ${u}${priceMode === 'keep' ? ' · 참고 단가(2022상)' : ' · 노임 2026하 적용'}` };
+          }),
+        ],
+        calcs: [
+          ...st.basis.calcs,
+          ...deps.calcs.map((c) => {
+            const b = REF_BASIS[c];
+            const lf = priceMode === 'current' ? LABOR_INDEX : 1;
+            return { no: calcNo.get(c)!, name: b.name, unit: b.unit, l: floor(b.l * lf), m: b.m, e: b.e };
+          }),
+        ],
+      } : st.basis,
     }));
     toast(withBasis ? `${items.length}줄과 근거 ${total}개를 가져왔습니다 (새로 추가 ${total - linked} · 기존 연결 ${linked})` : `${items.length}줄만 복사했습니다 — 근거 연결은 없습니다`);
     setDialog(false);

@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { useStore } from '../store';
+import { useAsk } from '../ui/Ask';
 import {
   flatten, won, qtyFmt, sectionAmount, costSheet, unitTotal, insertAfter, removeLine, cloneLine, mapSheet, newId,
   type Line, type Sheet, type FlatRow,
@@ -30,12 +31,13 @@ function buildRows(sheet: Sheet, collapsed: Set<string>, lv: number): Row[] {
 }
 
 export default function Estimate() {
-  const { s, set, start, editLine, toast } = useStore();
+  const { s, set, start, design, editLine, toast } = useStore();
   const { open } = usePopup();
+  const ask = useAsk();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const doc = params.get('doc') === 'start' ? 'start' : 'design';
-  const sheet = doc === 'start' ? start : s.design;
+  const sheet = doc === 'start' ? start : design;
   const editable = doc === 'design';
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -103,7 +105,13 @@ export default function Estimate() {
   const commit = (id: string, f: Field, v: string) => {
     const num = ['qty', 'lu', 'mu', 'eu'].includes(f);
     const val = num ? Number(v.replace(/[^0-9.\-]/g, '')) || 0 : v;
-    editLine(id, { [f]: val } as Partial<Line>);
+    const cur = flatten(design.sections.flatMap((x) => x.lines)).find((r) => r.line.id === id)?.line;
+    const priceField = ['lu', 'mu', 'eu'].includes(f);
+    if (priceField && cur?.link) {
+      // 근거 연결을 풀고, 지금 보이는 단가를 직접 단가로 고정
+      editLine(id, { link: false, lu: cur.lu, mu: cur.mu, eu: cur.eu, [f]: val } as Partial<Line>);
+      toast(`${cur.ref} 연결을 풀고 직접 넣은 단가로 바꿨습니다`);
+    } else editLine(id, { [f]: val } as Partial<Line>);
     setEdit(null);
   };
   const doFind = () => {
@@ -163,8 +171,8 @@ export default function Estimate() {
           <FB icon="sum" label="SUM" title="SUM 집계" onClick={() => toast('공종별 SUM을 다시 모았습니다')} />
           <FB icon="plus" label="합계" title="같은 레벨 합계" onClick={() => toast('같은 레벨 합계를 넣었습니다')} />
           <FB icon="pct" label="잡비" title="잡비 (비목 비율)" onClick={() => toast('잡비: 비목 비율로 넣습니다 (준비 중)')} />
-          <FB icon="bid" label="낙찰" title="낙찰률 적용 → 착공내역서" onClick={() => {
-            const v = prompt('낙찰률을 넣으세요 (예: 88.6)', String(+(s.bidRate * 100).toFixed(3)));
+          <FB icon="bid" label="낙찰" title="낙찰률 적용 → 착공내역서" onClick={async () => {
+            const v = await ask({ title: '낙찰률 적용', label: '낙찰률(%)을 넣으세요. 착공내역서 단가 = 설계 단가 × 낙찰률 (비목별 원 미만 버림)', value: String(+(s.bidRate * 100).toFixed(4)) });
             if (v && +v > 0) { set((st) => ({ ...st, bidRate: +v / 100 })); setParams({ doc: 'start' }); toast(`낙찰률 ${v}% 적용 — 착공내역서로 바꿨습니다`); }
           }} />
           <FB icon="recalc" label="재계산" title="일건서류 전체 재계산 (F9)" primary onClick={() => toast('전체재계산했습니다')} />
@@ -275,7 +283,7 @@ export default function Estimate() {
               <div className="n">{won(a.m)}</div>
               {grp ? <div className="n" /> : cell(fr, 'eu', won(l.eu), 'n')}
               <div className="n">{won(a.e)}</div>
-              <div>{l.ref && <Link className="lk" to={l.ref.startsWith('단산') ? '/calc' : '/unit'} onClick={(e) => e.stopPropagation()}>{l.ref}</Link>}</div>
+              <div>{l.ref && <Link className="lk" style={l.link ? undefined : { opacity: .5, textDecoration: 'line-through' }} title={l.link ? `${l.ref}에 연결 — 근거를 고치면 단가가 바뀝니다` : '연결 해제 (직접 단가)'} to={l.ref.startsWith('단산') ? `/calc#${l.ref}` : `/unit?no=${l.ref}`} onClick={(e) => e.stopPropagation()}>{l.ref}</Link>}</div>
             </div>
           );
         })}
@@ -299,7 +307,7 @@ export default function Estimate() {
           <button type="button" role="menuitem" style={{ fontWeight: 700 }} onClick={() => nav('/phase')}>차수 배정 ▸<span>Ctrl+Shift+D</span></button>
           <button type="button" role="menuitem" onClick={() => {
             if (needDesign()) return;
-            set((st) => ({ ...st, design: mapSheet(st.design, (x) => (x.id === sel && !x.children ? { ...x, eu: x.eu + x.mu, mu: 0 } : x)) }));
+            set((st) => ({ ...st, design: mapSheet(st.design, (x) => (x.id === sel && !x.children ? (x.link ? { ...x, asExpense: true } : { ...x, eu: x.eu + x.mu, mu: 0 }) : x)) }));
             setMenu(null); toast('재료비를 경비성 단가로 옮겼습니다');
           }}>경비성 단가 지정<span /></button>
         </div>

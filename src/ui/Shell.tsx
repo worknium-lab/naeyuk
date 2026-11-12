@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
 import { PROJECT } from '../data/project';
 import { useStore } from '../store';
+import { useAsk } from './Ask';
 
 /* ---------- 팝업 열기 (표준품셈 · 표준시장단가 · 참고 내역서) ---------- */
 export type PopupKind = 'pumsem' | 'market' | 'refcopy' | null;
@@ -28,6 +29,7 @@ type MenuItem = { label: string; to?: string; key?: string; act?: () => void } |
 function Menu() {
   const nav = useNavigate();
   const { reset, toast } = useStore();
+  const ask = useAsk();
   const { open: openPopup } = usePopup();
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -40,7 +42,7 @@ function Menu() {
     파일: [
       { label: '공사 목록', to: '/' }, { label: '프로젝트 홈', to: '/project' }, '-',
       { label: '다른 내역서 열기 (참고)', act: () => openPopup('refcopy') }, '-',
-      { label: '예시 데이터로 되돌리기', act: () => { if (confirm('입력한 내용을 지우고 예시 데이터로 되돌릴까요?')) { reset(); toast('예시 데이터로 되돌렸습니다'); } } },
+      { label: '예시 데이터로 되돌리기', act: async () => { if (await ask({ title: '예시 데이터로 되돌리기', label: '입력한 내용을 지우고 예시 데이터로 되돌릴까요?', confirmOnly: true, ok: '되돌리기' })) { reset(); toast('예시 데이터로 되돌렸습니다'); } } },
       { label: '모바일 화면', to: '/m' },
     ],
     편집: [{ label: '내역서', to: '/estimate' }, { label: '일위대가', to: '/unit' }, { label: '단가산출', to: '/calc' }],

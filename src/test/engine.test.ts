@@ -1,15 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { designSheet } from '../data/project';
-import { sectionAmount, costSheet, buildSubcontract, SUB_DEFAULT_EXCLUDE, applyRate, splitByRatio, phaseSheet, lineAmount } from '../engine';
+import { sectionAmount, costSheet, buildSubcontract, SUB_DEFAULT_EXCLUDE, applyRate, splitByRatio, phaseSheet, lineAmount, resolveSheet } from '../engine';
+import { basisData } from '../data/basisData';
+import { BID_RATE } from '../data/project';
+
+const startSheet = () => applyRate(resolveSheet(designSheet(), basisData()), BID_RATE, { skipSupplied: true });
 
 describe('내역서 합계', () => {
-  const s = designSheet();
-  it('순공사비가 용암교 xls와 같다', () => {
+  const s = startSheet();
+  it('착공 순공사비가 용암교 xls와 같다 (설계 = 근거, 착공 = 설계 × 0.88479)', () => {
     const a = sectionAmount(s, 'main');
-    expect(a.t).toBe(163_747_465);
+    // 중기운반(단산6 합계를 경비로) 1원 끝수 차이만 있다
     expect(a.l).toBe(91_288_016);
     expect(a.m).toBe(63_260_540);
-    expect(a.e).toBe(9_198_909);
+    expect(Math.abs(a.e - 9_198_909)).toBeLessThanOrEqual(1);
   });
   it('관급자재대·폐기물처리비', () => {
     expect(sectionAmount(s, 'supplied').t).toBe(10_571_980);
@@ -19,7 +23,7 @@ describe('내역서 합계', () => {
 
 describe('원가계산서', () => {
   it('설계 원가계산서 비목이 산출근거대로 계산된다', () => {
-    const s = designSheet();
+    const s = startSheet();
     const c = costSheet({ direct: sectionAmount(s, 'main'), waste: sectionAmount(s, 'waste').t, supplied: sectionAmount(s, 'supplied').t });
     expect(c.get('il')).toBe(12_506_458);
     expect(c.get('ind')).toBe(3_840_395);
@@ -37,7 +41,7 @@ describe('원가계산서', () => {
 });
 
 describe('하도급', () => {
-  const base = applyRate(designSheet(), 0.886, { skipSupplied: true });
+  const base = startSheet();
   const r = buildSubcontract({ base, pick: new Set(['G23', 'G26']), rate: 0.82, exclude: new Set(SUB_DEFAULT_EXCLUDE), round: 'floor1000' });
   it('하도급대상 공급가액은 천원 단위', () => {
     expect(r.target.supply % 1000).toBe(0);

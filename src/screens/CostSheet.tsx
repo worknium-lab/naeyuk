@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
+import { canPrint } from '../ui/Ask';
 import { useStore } from '../store';
+import { useAsk } from '../ui/Ask';
 import { useDocs } from '../docs';
 import { won, DEFAULT_RATES, type CostRates } from '../engine';
 
@@ -14,6 +16,7 @@ const RATE_LABELS: [keyof CostRates, string][] = [
 export default function CostSheet() {
   const { s, set, toast } = useStore();
   const docs = useDocs();
+  const ask = useAsk();
   const [params, setParams] = useSearchParams();
   const key = params.get('doc') ?? 'design';
   const d = docs.get(key);
@@ -35,8 +38,8 @@ export default function CostSheet() {
           <FB icon="trash" label="내용삭제" onClick={() => { set((st) => ({ ...st, rates: {} })); toast('요율을 기본값으로 되돌렸습니다'); }} />
         </Group>
         <Group label="계산">
-          <FB icon="adj" label="역산" title="목표 도급액에서 이윤 역산" onClick={() => {
-            const v = prompt('맞출 도급액(부가세 포함)을 넣으세요', String(d.cost.total));
+          <FB icon="adj" label="역산" title="목표 도급액에서 이윤 역산" onClick={async () => {
+            const v = await ask({ title: '역산', label: '맞출 도급액(부가세 포함)을 넣으세요', value: String(d.cost.total) });
             if (!v) return;
             const target = Math.floor(Number(v.replace(/[^0-9]/g, '')) / (1 + R.vat));
             const need = target - (d.cost.get('D') + d.cost.get('gen') + d.cost.get('waste'));
@@ -49,7 +52,7 @@ export default function CostSheet() {
           <FB icon="recalc" label="재계산" primary onClick={() => toast('전체재계산했습니다')} />
         </Group>
         <Group label="출력">
-          <FB icon="print" label="인쇄" onClick={() => window.print()} />
+          <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
           <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장은 데스크톱 판에서 붙입니다')} />
         </Group>
       </>}

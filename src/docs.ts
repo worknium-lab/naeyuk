@@ -14,7 +14,7 @@ export interface DocInfo {
 
 /** 프로젝트의 모든 문서를 같은 계산 엔진으로 만든다 (일건서류 전체재계산) */
 export function useDocs() {
-  const { s, start } = useStore();
+  const { s, start, design } = useStore();
   return useMemo(() => {
     const mk = (key: string, name: string, sheet: Sheet, opts: { targetSupply?: number } = {}): DocInfo => ({
       key, name, sheet,
@@ -26,7 +26,7 @@ export function useDocs() {
         ...opts,
       }),
     });
-    const list: DocInfo[] = [mk('design', '설계내역서', s.design), mk('start', '착공내역서', start)];
+    const list: DocInfo[] = [mk('design', '설계내역서', design), mk('start', '착공내역서', start)];
     if (s.phaseOn) s.phases.forEach((p, i) => list.push(mk(`phase${i}`, `${p.name} 내역서 (${p.year})`, phaseSheet(start, s.alloc, i))));
     if (s.progressOn) {
       const cur = s.rounds.length - 1;
@@ -38,5 +38,5 @@ export function useDocs() {
       result: buildSubcontract({ base: start, pick: new Set(sub.pick), rate: sub.rate, exclude: new Set(sub.exclude), round: sub.round }),
     }));
     return { list, get: (k: string) => list.find((d) => d.key === k) ?? list[0], subs };
-  }, [s, start]);
+  }, [s, start, design]);
 }

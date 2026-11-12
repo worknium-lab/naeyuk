@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { AskProvider, canPrint } from './ui/Ask';
 import { StoreProvider } from './store';
 import { PopupCtx, type PopupKind } from './ui/Shell';
 import Main from './screens/Main';
@@ -14,12 +15,16 @@ import { UnitCost, Calc, Machine, Material, Labor } from './screens/Basis';
 import { Pumsem, MarketPrice, RefCopy } from './screens/Popups';
 import { MobileHome, MobileEstimate, MobileCost } from './screens/Mobile';
 
+/** claude.ai 같은 샌드박스 창 안에서는 주소창 해시를 못 쓰므로 메모리 라우터 */
+const Router = canPrint() ? HashRouter : MemoryRouter;
+
 export default function App() {
   const [kind, setKind] = useState<PopupKind>(null);
   const close = () => setKind(null);
   return (
     <StoreProvider>
-      <HashRouter>
+      <Router>
+        <AskProvider>
         <PopupCtx.Provider value={{ open: setKind, kind }}>
           <Routes>
             <Route path="/" element={<Main />} />
@@ -43,7 +48,8 @@ export default function App() {
           {kind === 'market' && <MarketPrice onClose={close} />}
           {kind === 'refcopy' && <RefCopy onClose={close} />}
         </PopupCtx.Provider>
-      </HashRouter>
+        </AskProvider>
+      </Router>
     </StoreProvider>
   );
 }

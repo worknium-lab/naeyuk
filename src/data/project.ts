@@ -1,5 +1,5 @@
 import rowsRaw from './estimate.rows.json';
-import { parseNum, type Line, type Sheet, type Section } from '../engine';
+import { parseNum, floor, type Line, type Sheet, type Section } from '../engine';
 
 type Raw = [number, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string[], string?];
 
@@ -20,9 +20,24 @@ const REFS: Record<string, string> = {
   '중기운반': '단산6',
 };
 
+/** 용암교 xls의 낙찰률 — 착공 단가 = 설계 단가 × 0.88479 (비목별 원 미만 버림) */
+export const BID_RATE = 0.88479;
+
+/** 착공 단가 x가 나오는 가장 작은 설계 단가 */
+function designUnit(x: number): number {
+  if (!x) return 0;
+  let d = Math.ceil(x / BID_RATE);
+  while (floor(d * BID_RATE) > x) d -= 1;
+  while (floor(d * BID_RATE) < x) d += 1;
+  return d;
+}
+
 const SECTION: Record<string, Section> = { G1: 'main', G38: 'supplied', G41: 'waste' };
 
-/** 설계내역서 — 국도43호선 용암교 보수공사 (용암교 xls 기준) */
+/**
+ * 설계내역서 — 국도43호선 용암교 보수공사.
+ * 용암교 xls의 내역(착공 단가)을 설계 단가로 되돌리고, 근거가 있는 줄은 일위대가·단가산출에 연결한다.
+ */
 export function designSheet(): Sheet {
   const rows = rowsRaw as unknown as Raw[];
   const byId = new Map<string, Line>();
@@ -44,6 +59,15 @@ export function designSheet(): Sheet {
       ref: REFS[name],
       children: kind === 'grp' ? [] : undefined,
     };
+    const main = !parents.length ? SECTION[line.id] === 'main' || !SECTION[line.id] : (parents[0] === 'G1');
+    if (kind !== 'grp' && main) {
+      if (line.ref) {
+        line.link = true;
+        if (name === '중기운반') line.asExpense = true;
+      } else {
+        line.lu = designUnit(line.lu); line.mu = designUnit(line.mu); line.eu = designUnit(line.eu);
+      }
+    }
     // 단위조정(△)은 단가가 음수
     if (name === '단위조정') line.eu = -7951;
     byId.set(line.id, line);
@@ -60,6 +84,6 @@ export const PROJECT = {
   name: '국도43호선 용암교 보수공사',
   file: 'D:\\적산\\Data\\국도43호선 용암교 보수공사.wnx',
   client: '○○국토관리사무소',
-  bidRate: 0.886,
+  bidRate: BID_RATE,
   basis: '2026년 하반기',
 };

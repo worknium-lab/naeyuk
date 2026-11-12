@@ -16,6 +16,10 @@ export interface Line {
   eu: number;
   /** 근거 (제3호표, 단산3, 시장단가 코드 …) */
   ref?: string;
+  /** 근거(호표·단산)에 연결 — 단가를 근거에서 가져옴 */
+  link?: boolean;
+  /** 근거 합계를 경비로 처리 (중기운반 등) */
+  asExpense?: boolean;
   note?: string;
   children?: Line[];
 }

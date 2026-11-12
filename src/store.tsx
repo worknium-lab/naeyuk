@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId,
-  type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
+  applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits,
+  type Basis, type UnitCalc, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
 import { designSheet, PROJECT } from './data/project';
+import { basisData } from './data/basisData';
 
 export interface Subcontract {
   id: string;
@@ -37,16 +38,17 @@ export interface State {
   rounds: { name: string; status: '확정' | '작성 중' }[];
   progress: Progress;
   subs: Subcontract[];
-  imported: ImportedUnit[];
   changeConfirmed: boolean;
   rates: Partial<CostRates>;
+  basis: Basis;
 }
 
-const KEY = 'naeyuk.v1';
+const KEY = 'naeyuk.v2';
 
 function initial(): State {
   const design = designSheet();
-  const start = applyRate(design, PROJECT.bidRate, { skipSupplied: true });
+  const basis = basisData();
+  const start = applyRate(resolveSheet(design, basis), PROJECT.bidRate, { skipSupplied: true });
   const alloc = splitByRatio(start, [0.48, 0.52]);
   alloc['L17'] = [0, 0]; // 조인트부 실란트보수 — 아직 미배정
   const progress: Progress = {};
@@ -78,9 +80,9 @@ function initial(): State {
       { id: 's1', vendor: '○○포장(주)', trade: '포장면', pick: ['G23'], rate: 0.82, exclude: [...SUB_DEFAULT_EXCLUDE], round: 'floor1000', confirmed: true },
       { id: 's2', vendor: '○○건설(주)', trade: '기타 보수공', pick: ['G26'], rate: 0.82, exclude: [...SUB_DEFAULT_EXCLUDE], round: 'floor1000', confirmed: false },
     ],
-    imported: [],
     changeConfirmed: false,
     rates: {},
+    basis,
   };
 }
 
@@ -98,7 +100,10 @@ interface Ctx {
   s: State;
   set: (fn: (s: State) => State) => void;
   reset: () => void;
+  /** 근거를 반영한 설계내역서 */
+  design: Sheet;
   start: Sheet;
+  units: Map<string, UnitCalc>;
   toast: (msg: string) => void;
   editLine: (id: string, patch: Partial<Line>) => void;
 }
@@ -120,13 +125,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const t = setTimeout(() => setMsg(null), 2600);
     return () => clearTimeout(t);
   }, [msg]);
-  const start = useMemo(() => applyRate(s.design, s.bidRate, { skipSupplied: true }), [s.design, s.bidRate]);
+  const units = useMemo(() => computeUnits(s.basis), [s.basis]);
+  const design = useMemo(() => resolveSheet(s.design, s.basis, units), [s.design, s.basis, units]);
+  const start = useMemo(() => applyRate(design, s.bidRate, { skipSupplied: true }), [design, s.bidRate]);
   const set = useCallback((fn: (s: State) => State) => setS(fn), []);
   const editLine = useCallback((id: string, patch: Partial<Line>) => {
     setS((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }, []);
   const value: Ctx = {
-    s, set, start, editLine,
+    s, set, design, start, units, editLine,
     reset: () => setS(initial()),
     toast: (m) => setMsg(m),
   };

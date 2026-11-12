@@ -1,13 +1,16 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
+import { canPrint } from '../ui/Ask';
 import { useStore, type Subcontract as Sub } from '../store';
 import { useDocs } from '../docs';
+import { useAsk } from '../ui/Ask';
 import { flatten, won, qtyFmt, lineAmount, unitTotal, pct, findLine, SUB_DEFAULT_EXCLUDE, roundTo, type CostKey, type RoundMode } from '../engine';
 
 export default function Subcontract() {
   const { s, set, start, toast } = useStore();
   const docs = useDocs();
+  const ask = useAsk();
   const [params, setParams] = useSearchParams();
   const id = params.get('id') ?? s.subs[0]?.id;
   const entry = docs.subs.find((x) => x.sub.id === id) ?? docs.subs[0];
@@ -55,8 +58,8 @@ export default function Subcontract() {
             update({ pick: [...pending], trade: names.length ? names.join(' · ') : '공종 선택 전' });
             toast('선택한 공종으로 하도급내역서를 다시 만들었습니다');
           }} />
-          <FB icon="pct" label="하도급율" onClick={() => {
-            const v = prompt('하도급율(%)', String(+(sub.rate * 100).toFixed(3)));
+          <FB icon="pct" label="하도급율" onClick={async () => {
+            const v = await ask({ title: '하도급율', label: '하도급율(%)', value: String(+(sub.rate * 100).toFixed(3)) });
             if (v && +v > 0) update({ rate: +v / 100 });
           }} />
         </Group>
@@ -66,12 +69,12 @@ export default function Subcontract() {
           <FB icon="recalc" label="재계산" onClick={() => toast('하도급 원가를 다시 계산했습니다')} />
         </Group>
         <Group label="업체">
-          <FB icon="vendor" label="업체" onClick={() => { const v = prompt('하도급 업체명', sub.vendor); if (v) update({ vendor: v }); }} />
+          <FB icon="vendor" label="업체" onClick={async () => { const v = await ask({ title: '하도급 업체', label: '업체명', value: sub.vendor }); if (v) update({ vendor: v }); }} />
           <FB icon="new" label="하도급 추가" onClick={addSub} />
           <FB icon="compare" label="대비내역서" to={`/sub/compare?id=${sub.id}`} />
         </Group>
         <Group label="출력">
-          <FB icon="print" label="인쇄" onClick={() => window.print()} />
+          <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
           <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장은 데스크톱 판에서 붙입니다')} />
         </Group>
       </>}

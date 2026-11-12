@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
+import { canPrint } from '../ui/Ask';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
 import { flatten, won, qtyFmt, lineAmount, pct, type Line } from '../engine';
@@ -54,7 +55,7 @@ export default function Progress() {
           <FB icon="net" label="원가계산서" to="/cost?doc=progress" />
         </Group>
         <Group label="출력">
-          <FB icon="print" label="인쇄" onClick={() => window.print()} />
+          <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
           <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장은 데스크톱 판에서 붙입니다')} />
         </Group>
       </>}
