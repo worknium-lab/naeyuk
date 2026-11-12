@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
+import { exportXlsx } from '../xlsx';
+import { sheetRows, costRows, compareRows } from '../exports';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
 import { flatten, won, qtyFmt, unitTotal, pct, lineAmount, type Line } from '../engine';
@@ -47,7 +49,10 @@ export default function SubCompare() {
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" title="표지·갑지·대비원가·대비내역 묶어 인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
-          <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장(시트별)은 데스크톱 판에서 붙입니다')} />
+          <FB icon="excel" label="엑셀" onClick={() => exportXlsx(`원·하도급 대비내역서 — ${sub.vendor}.xlsx`, [
+            compareRows(main, r.targetLines, r.subLines),
+            { ...costRows('원·하도급 원가계산서', doDoc.cost, [{ label: '도급금액', cost: doDoc.cost }, { label: '하도급대상금액', cost: r.target }, { label: '하도급금액', cost: r.sub }]), name: '대비원가' },
+          ]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
         </Group>
       </>}
       info={<>

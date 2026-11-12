@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
+import { exportXlsx } from '../xlsx';
+import { sheetRows, costRows, compareRows } from '../exports';
 import { useStore, type Subcontract as Sub } from '../store';
 import { useDocs } from '../docs';
 import { useAsk } from '../ui/Ask';
@@ -75,7 +77,10 @@ export default function Subcontract() {
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
-          <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장은 데스크톱 판에서 붙입니다')} />
+          <FB icon="excel" label="엑셀" onClick={() => exportXlsx(`하도급내역서 — ${sub.vendor}.xlsx`, [
+            sheetRows(`하도급내역서 — ${sub.vendor} · ${sub.trade}`, { sections: [{ section: 'main', lines: r.subLines }] }),
+            { ...costRows('하도급 원가계산서', sb, [{ label: '하도급대상', cost: tgt }, { label: '하도급', cost: sb }]), name: '원가계산서' },
+          ]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
         </Group>
       </>}
       info={<>

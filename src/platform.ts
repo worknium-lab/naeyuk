@@ -49,20 +49,22 @@ export async function remoteStore(keys: string[]): Promise<Remote | null> {
 }
 
 /** 파일 내려받기: 일반 브라우저는 바로, 아티팩트는 downloads 기능으로. 둘 다 안 되면 false */
-export async function saveFile(filename: string, text: string, top: boolean): Promise<boolean> {
+export async function saveFile(filename: string, data: string | Blob, top: boolean): Promise<boolean> {
   if (top) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.href = URL.createObjectURL(typeof data === 'string' ? new Blob([data], { type: 'application/json' }) : data);
     a.download = filename;
     a.click();
     return true;
   }
   const dl = await capability<any>('downloads');
   if (!dl) return false;
+  // claude.ai는 허용된 확장자만 받는다 (.wnx는 .wnx.json으로)
+  const name = filename.endsWith('.wnx') ? `${filename}.json` : filename;
   try {
-    await dl.save({ filename, data: text });
+    await dl.save({ filename: name, data });
     return true;
-  } catch {
-    return false;
+  } catch (e) {
+    return (e as { code?: string })?.code === 'declined';
   }
 }

@@ -2,6 +2,8 @@ import { Fragment, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
+import { exportXlsx } from '../xlsx';
+import { sheetRows, costRows, compareRows } from '../exports';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
 import { flatten, won, qtyFmt, lineAmount, pct, type Line } from '../engine';
@@ -56,7 +58,11 @@ export default function Progress() {
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
-          <FB icon="excel" label="엑셀" onClick={() => toast('엑셀 저장은 데스크톱 판에서 붙입니다')} />
+          <FB icon="excel" label="엑셀" onClick={() => exportXlsx(`기성내역서 ${s.rounds[round].name}.xlsx`, [
+            { ...sheetRows(`기성내역서 ${s.rounds[round].name} (금회)`, docs.get('progress').sheet), name: '금회' },
+            { ...sheetRows(`기성내역서 ${s.rounds[round].name} (누계)`, docs.get('progressCum').sheet), name: '누계' },
+            costRows('기성 원가계산서 (금회)', docs.get('progress').cost),
+          ]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
         </Group>
       </>}
       info={<>
