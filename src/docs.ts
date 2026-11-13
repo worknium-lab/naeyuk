@@ -25,12 +25,13 @@ export function useDocs() {
         rates: s.rates,
         exclude: new Set(s.exclude ?? []),
         roundAdj: s.roundAdj?.[key] ?? 0,
+        extra: s.extraCost ?? [],
         ...opts,
       }),
     });
     const d0 = mk('design', '설계내역서', design);
     // 설계가 고정 비목: 착공·설계변경도 설계 금액 그대로 (설계변경은 변경된 설계 기준)
-    const keys = s.fixedKeys ?? FIXED_DEFAULT;
+    const keys: CostKey[] = [...(s.fixedKeys ?? FIXED_DEFAULT), ...(s.extraCost ?? []).filter((x) => x.fixed).map((x) => `x:${x.id}` as CostKey)];
     const fixedOf = (c: CostResult) => Object.fromEntries(keys.filter((k) => c.rows.find((r) => r.key === k)?.amount != null).map((k) => [k, c.get(k)])) as Partial<Record<CostKey, number>>;
     const dChange = mk('changeDesign', '', changeSheet(design, s.change, 1));
     const list: DocInfo[] = [d0, mk('start', '착공내역서', start, { fixed: fixedOf(d0.cost) }), mk('change', `설계변경 내역서 ${s.change.name}`, changeSheet(start, s.change, s.bidRate), { fixed: fixedOf(dChange.cost) })];

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   applyRate, flatten, mapSheet, splitByRatio, costSheet, sectionAmount, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits, changeSheet,
-  type Basis, type UnitCalc, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
+  type Basis, type UnitCalc, type ExtraItem, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
 import { designSheet, PROJECT, REFS } from './data/project';
 import { basisData } from './data/basisData';
@@ -46,6 +46,8 @@ export interface State {
   exclude?: CostKey[];
   /** 설계가 고정 비목 (착공·설계변경에서 설계 금액 그대로) */
   fixedKeys?: CostKey[];
+  /** 원가계산서에 추가한 비목 (모든 문서) */
+  extraCost?: ExtraItem[];
   /** 문서별 단수정리값 (부가세 포함) — 이윤에 TRUNC(값 ÷ 1.1) */
   roundAdj?: Record<string, number>;
   design: Sheet;
