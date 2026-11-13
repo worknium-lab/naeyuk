@@ -284,12 +284,34 @@ export function basisPrice(b: Basis, units: Map<string, UnitCalc>, ref?: string)
 
 /** 근거에 연결된 내역 줄의 단가를 근거 값으로 바꾼다 (설계내역서) */
 export function resolveSheet(sheet: Sheet, b: Basis, units = computeUnits(b)): Sheet {
-  return mapSheet(sheet, (l: Line) => {
+  const linked = mapSheet(sheet, (l: Line) => {
     if (l.children || !l.link) return l;
     const p = basisPrice(b, units, l.ref);
     if (!p) return l;
     if (l.asExpense) return { ...l, lu: 0, mu: 0, eu: p.l + p.m + p.e };
     return { ...l, lu: p.l, mu: p.m, eu: p.e };
+  });
+  return applyPct(linked);
+}
+
+/** 잡비 줄: 같은 공종 안 다른 항목 금액의 % (원 미만 버림) — 단가로 넣고 수량은 1 */
+export function applyPct(sheet: Sheet): Sheet {
+  return mapSheet(sheet, (g: Line) => {
+    if (!g.children?.some((c) => c.pct)) return g;
+    const sum = { l: 0, m: 0, e: 0, t: 0 };
+    for (const c of g.children) {
+      if (c.pct || c.children) continue;
+      const l = floor(c.qty * c.lu), m = floor(c.qty * c.mu), e = floor(c.qty * c.eu);
+      sum.l += l; sum.m += m; sum.e += e; sum.t += l + m + e;
+    }
+    return {
+      ...g,
+      children: g.children.map((c) => {
+        if (!c.pct) return c;
+        const v = floor((sum[c.pct.of] * c.pct.pct) / 100);
+        return { ...c, qty: 1, lu: c.pct.to === 'l' ? v : 0, mu: c.pct.to === 'm' ? v : 0, eu: c.pct.to === 'e' ? v : 0 };
+      }),
+    };
   });
 }
 

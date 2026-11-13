@@ -21,7 +21,7 @@ export interface Remote {
 }
 
 /** 내 계정에만 보이는 저장소 (data/users/<id>/…) — 상태의 큰 항목마다 문서 하나 */
-export async function remoteStore(keys: string[]): Promise<Remote | null> {
+export async function remoteStore(keys: string[], prefix = ''): Promise<Remote | null> {
   const db = await capability<any>('db');
   const user = await capability<any>('user');
   if (!db || !user) return null;
@@ -34,7 +34,7 @@ export async function remoteStore(keys: string[]): Promise<Remote | null> {
       const out: Record<string, unknown> = {};
       let any = false;
       for (const k of keys) {
-        const snap = await col.doc(`naeyuk-${k}`).get();
+        const snap = await col.doc(`naeyuk-${prefix}${k}`).get();
         if (snap.exists) {
           const v = snap.data()?.v;
           if (typeof v === 'string') { out[k] = JSON.parse(v); any = true; }
@@ -43,7 +43,7 @@ export async function remoteStore(keys: string[]): Promise<Remote | null> {
       return any ? out : null;
     },
     async save(k, value) {
-      await col.doc(`naeyuk-${k}`).set({ v: JSON.stringify(value), at: new Date().toISOString() });
+      await col.doc(`naeyuk-${prefix}${k}`).set({ v: JSON.stringify(value), at: new Date().toISOString() });
     },
   };
 }

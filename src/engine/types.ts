@@ -21,6 +21,8 @@ export interface Line {
   /** 근거 합계를 경비로 처리 (중기운반 등) */
   asExpense?: boolean;
   note?: string;
+  /** 잡비 줄 — 같은 공종 안 다른 항목의 비목 금액 × % 를 단가로 (수량 1) */
+  pct?: { of: 'l' | 'm' | 'e' | 't'; pct: number; to: 'l' | 'm' | 'e' };
   children?: Line[];
 }
 

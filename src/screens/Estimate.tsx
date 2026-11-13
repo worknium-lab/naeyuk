@@ -1,12 +1,13 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Shell, FB, Group, usePopup } from '../ui/Shell';
+import { Shell, FB, Group, usePopup, Win } from '../ui/Shell';
+import { useDocs } from '../docs';
 import { exportXlsx } from '../xlsx';
 import { sheetRows, costRows, compareRows, docBook } from '../exports';
 import { useStore } from '../store';
 import { useAsk } from '../ui/Ask';
 import {
-  flatten, won, qtyFmt, sectionAmount, costSheet, unitTotal, insertAfter, removeLine, cloneLine, mapSheet, newId,
+  flatten, won, qtyFmt, sectionAmount, unitTotal, calcPrice, quotePrice, insertAfter, removeLine, cloneLine, mapSheet, newId,
   type Line, type Sheet, type FlatRow,
 } from '../engine';
 
@@ -43,7 +44,7 @@ export default function Estimate() {
   const editable = doc === 'design';
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [sel, setSel] = useState<string>('L18');
+  const [sel, setSel] = useState<string>(() => { const all = sheet.sections.flatMap((x) => flatten(x.lines)); return (all.find((r) => r.line.id === 'L18') ?? all.find((r) => !r.line.children) ?? all[0])?.line.id ?? ''; });
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [edit, setEdit] = useState<{ id: string; f: Field } | null>(null);
   const [clip, setClip] = useState<Line | null>(null);
@@ -55,12 +56,14 @@ export default function Estimate() {
   const levelsUsed = useMemo(() => new Set(sheet.sections.flatMap((x) => flatten(x.lines)).map((r) => r.line.level).filter(Boolean)), [sheet]);
   const allCount = useMemo(() => sheet.sections.reduce((n, x) => n + flatten(x.lines).length, 0), [sheet]);
   const main = sectionAmount(sheet, 'main');
-  const cost = costSheet({ direct: main, waste: sectionAmount(sheet, 'waste').t, supplied: sectionAmount(sheet, 'supplied').t });
+  const docsAll = useDocs();
+  const cost = docsAll.get(doc).cost;
+  const [dlg, setDlg] = useState<null | 'pct' | 'link'>(null);
 
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'F9') { e.preventDefault(); toast('전체재계산했습니다'); }
+      if (e.key === 'F9') { e.preventDefault(); toast(`전체재계산 — 순공사비 ${won(main.t)}원 · 도급액 ${won(cost.total)}원`); }
       if (e.shiftKey && /^F[1-4]$/.test(e.key)) { e.preventDefault(); setLevel(Number(e.key[1]) as Line['level']); }
       if (e.shiftKey && e.key === 'F10') { e.preventDefault(); setLevel(0); }
     };
@@ -89,6 +92,29 @@ export default function Estimate() {
     const id = newId('g');
     updateDesign((d) => insertAfter(d, sel, [{ id, level: 2, mark: '○', name: '새 공종', spec: '', unit: '', qty: 0, lu: 0, mu: 0, eu: 0, children: [] }]));
     setSel(id); setEdit({ id, f: 'name' });
+  };
+  /** 고른 줄이 들어 있는 공종 (공종을 골랐으면 그 공종) */
+  const groupOfSel = () => {
+    const all = s.design.sections.flatMap((x) => flatten(x.lines));
+    const r = all.find((x) => x.line.id === sel);
+    if (!r) return null;
+    if (r.line.children) return r.line;
+    const pid = r.ancestors[r.ancestors.length - 1];
+    return all.find((x) => x.line.id === pid)?.line ?? null;
+  };
+  const addPct = (o: { name: string; pct: number; of: 'l' | 'm' | 'e' | 't'; to: 'l' | 'm' | 'e' }) => {
+    const g = groupOfSel();
+    if (!g) { toast('잡비를 넣을 공종이나 그 안의 항목을 먼저 고르세요'); return; }
+    const id = newId('p');
+    const of = { l: '노무비', m: '재료비', e: '경비', t: '합계' }[o.of];
+    updateDesign((d) => mapSheet(d, (x) => (x.id === g.id ? { ...x, children: [...(x.children ?? []), { id, level: 0, mark: '', name: o.name, spec: `${of}의 ${o.pct}%`, unit: '식', qty: 1, lu: 0, mu: 0, eu: 0, pct: { of: o.of, pct: o.pct, to: o.to } }] } : x)));
+    setSel(id);
+    toast(`[${g.name}]에 ${o.name}(${of}의 ${o.pct}%)을 넣었습니다 — 공종 안 항목이 바뀌면 같이 다시 계산됩니다`);
+  };
+  const linkRef = (ref: string, asExpense: boolean) => {
+    if (needDesign()) return;
+    editLine(sel, { ref: ref || undefined, link: !!ref, asExpense: asExpense || undefined });
+    toast(ref ? `${ref}에 연결했습니다 — 단가를 근거에서 가져옵니다` : '연결을 풀었습니다');
   };
   const del = () => {
     if (needDesign()) return;
@@ -150,7 +176,7 @@ export default function Estimate() {
 
   return (
     <Shell
-      doc={`${doc === 'start' ? '착공내역서' : '설계내역서'} : 국도43호선 용암교 보수공사`}
+      doc={`${doc === 'start' ? '착공내역서' : '설계내역서'} : ${s.info.name}`}
       toolbar={<>
         <Group label="기초자료 불러오기">
           <FB icon="labor" label="노임" title="노임단가" to="/labor" />
@@ -164,20 +190,18 @@ export default function Estimate() {
         <Group label="자료 관리">
           <FB icon="folder" label="공종" title="공종 넣기" onClick={insertGroup} />
           <FB icon="docs" label="내역서" title="참고 내역서 열기 (별도 창, 근거와 함께 복사)" onClick={() => open('refcopy')} />
-          <FB icon="db" label="Main" title="메인 데이터" onClick={() => toast('Main 데이터: 2026년 하반기 노임 · 자재 · 시장단가 3개 등록')} />
+          <FB icon="link" label="근거 연결" title="고른 항목을 일위대가·단가산출·견적단가에 연결" onClick={() => { if (!needDesign()) setDlg('link'); }} />
           <FB icon="book" label="품셈" title="표준품셈 검색 (팝업)" onClick={() => open('pumsem')} />
           <FB icon="search" label="통합검색" onClick={() => findRef.current?.focus()} />
         </Group>
         <Group label="계산">
           <FB icon="net" label="순공사비 계산" onClick={() => toast(`순공사비 ${won(main.t)}원 (노무 ${won(main.l)} · 재료 ${won(main.m)} · 경비 ${won(main.e)})`)} />
-          <FB icon="sum" label="SUM" title="SUM 집계" onClick={() => toast('공종별 SUM을 다시 모았습니다')} />
-          <FB icon="plus" label="합계" title="같은 레벨 합계" onClick={() => toast('같은 레벨 합계를 넣었습니다')} />
-          <FB icon="pct" label="잡비" title="잡비 (비목 비율)" onClick={() => toast('잡비: 비목 비율로 넣습니다 (준비 중)')} />
+          <FB icon="pct" label="잡비" title="공종 안 항목 금액의 % 로 잡비 줄 넣기" onClick={() => { if (!needDesign()) setDlg('pct'); }} />
           <FB icon="bid" label="낙찰" title="낙찰률 적용 → 착공내역서" onClick={async () => {
             const v = await ask({ title: '낙찰률 적용', label: '낙찰률(%)을 넣으세요. 착공내역서 단가 = 설계 단가 × 낙찰률 (비목별 원 미만 버림)', value: String(+(s.bidRate * 100).toFixed(4)) });
             if (v && +v > 0) { set((st) => ({ ...st, bidRate: +v / 100 })); setParams({ doc: 'start' }); toast(`낙찰률 ${v}% 적용 — 착공내역서로 바꿨습니다`); }
           }} />
-          <FB icon="recalc" label="재계산" title="일건서류 전체 재계산 (F9)" primary onClick={() => toast('전체재계산했습니다')} />
+          <FB icon="recalc" label="재계산" title="일건서류 전체 재계산 (F9)" primary onClick={() => toast(`전체재계산 — 순공사비 ${won(main.t)}원 · 도급액 ${won(cost.total)}원`)} />
         </Group>
         <Group label="편집">
           <FB icon="insert" label="삽입" title="줄 삽입 (Insert)" onClick={insertItem} />
@@ -187,7 +211,7 @@ export default function Estimate() {
           <FB icon="phase" label="차수분개" title="차수공사 분개" to="/phase" />
         </Group>
         <Group label="출력">
-          <FB icon="excel" label="엑셀" title="내역서 + 원가계산서" onClick={() => exportXlsx(`${doc === 'start' ? '착공' : '설계'}내역서 — 국도43호선 용암교.xlsx`, docBook(doc === 'start' ? '착공내역서' : '설계내역서', sheet, cost)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
+          <FB icon="excel" label="엑셀" title="내역서 + 원가계산서" onClick={() => exportXlsx(`${doc === 'start' ? '착공' : '설계'}내역서 — ${s.info.name}.xlsx`, docBook(doc === 'start' ? '착공내역서' : '설계내역서', sheet, cost)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
         </Group>
       </>}
       info={<>
@@ -304,6 +328,8 @@ export default function Estimate() {
           <button type="button" role="menuitem" disabled={!clip} onClick={paste}>붙여넣기<span>Ctrl+V</span></button>
           <button type="button" role="menuitem" onClick={insertItem}>줄 삽입<span>Insert</span></button>
           <button type="button" role="menuitem" onClick={del}>블록 삭제<span>Ctrl+Del</span></button>
+          <button type="button" role="menuitem" onClick={() => { setMenu(null); if (!needDesign()) setDlg('link'); }}>근거 연결 (호표·단산·견적)…<span /></button>
+          <button type="button" role="menuitem" onClick={() => { setMenu(null); if (!needDesign()) setDlg('pct'); }}>잡비 줄 넣기…<span /></button>
           <hr />
           <button type="button" role="menuitem" onClick={() => { setMenu(null); open('refcopy'); }}>다른 내역서에서 복사<span>창</span></button>
           <button type="button" role="menuitem" onClick={() => { setMenu(null); open('pumsem'); }}>표준품셈 검색<span>팝업</span></button>
@@ -317,6 +343,67 @@ export default function Estimate() {
           }}>경비성 단가 지정<span /></button>
         </div>
       )}
+      {dlg === 'pct' && <PctDialog onClose={() => setDlg(null)} onOk={(o) => { setDlg(null); addPct(o); }} />}
+      {dlg === 'link' && <LinkDialog cur={flatten(s.design.sections.flatMap((x) => x.lines)).find((r) => r.line.id === sel)?.line} onClose={() => setDlg(null)} onOk={(r, e) => { setDlg(null); linkRef(r, e); }} />}
     </Shell>
+  );
+}
+
+function PctDialog({ onClose, onOk }: { onClose: () => void; onOk: (o: { name: string; pct: number; of: 'l' | 'm' | 'e' | 't'; to: 'l' | 'm' | 'e' }) => void }) {
+  const [name, setName] = useState('공구손료');
+  const [pct, setPct] = useState('3');
+  const [of, setOf] = useState<'l' | 'm' | 'e' | 't'>('l');
+  const [to, setTo] = useState<'l' | 'm' | 'e'>('e');
+  return (
+    <Win title="잡비 줄 넣기" onClose={onClose} w={460} h={330}
+      buttons={<><span className="grow" /><button type="button" className="btn" onClick={onClose}>취소</button><button type="button" className="btn pri" onClick={() => onOk({ name: name.trim() || '잡비', pct: Number(pct) || 0, of, to })}>넣기</button></>}>
+      <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '90px 1fr', gap: 10, alignItems: 'center' }}>
+        <label htmlFor="pc-n">품명</label><input id="pc-n" type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ height: 26 }} />
+        <span>기준</span>
+        <div>같은 공종 안 항목의 <select value={of} onChange={(e) => setOf(e.target.value as typeof of)}><option value="l">노무비</option><option value="m">재료비</option><option value="e">경비</option><option value="t">합계</option></select> ×
+          <input type="text" value={pct} onChange={(e) => setPct(e.target.value)} style={{ width: 60, height: 24, textAlign: 'right', marginLeft: 6 }} /> %</div>
+        <span>넣을 비목</span>
+        <select value={to} onChange={(e) => setTo(e.target.value as typeof to)} style={{ height: 26, width: 140 }}><option value="l">노무비</option><option value="m">재료비</option><option value="e">경비</option></select>
+      </div>
+      <div className="hint" style={{ padding: '0 16px' }}>공구손료·잡재료비처럼 공종 안 다른 항목 금액의 비율로 계산되는 줄입니다. 항목이 바뀌면 같이 다시 계산됩니다.</div>
+    </Win>
+  );
+}
+
+function LinkDialog({ cur, onClose, onOk }: { cur?: Line; onClose: () => void; onOk: (ref: string, asExpense: boolean) => void }) {
+  const { s, units } = useStore();
+  const [ref, setRef] = useState(cur?.ref ?? '');
+  const [asExp, setAsExp] = useState(!!cur?.asExpense);
+  const [q, setQ] = useState(cur?.name ?? '');
+  const opts = [
+    ...s.basis.units.map((u) => { const t = units.get(u.no)?.total; return { ref: u.no, kind: '일위대가', name: `${u.name} ${u.spec}`.trim(), unit: u.unit, price: t ? t.l + t.m + t.e : 0 }; }),
+    ...s.basis.calcs.map((c) => { const p = calcPrice(s.basis, c); return { ref: c.no, kind: '단가산출', name: c.name, unit: c.unit, price: p.l + p.m + p.e }; }),
+    ...(s.basis.quotes ?? []).map((x) => ({ ref: x.no, kind: '견적단가', name: `${x.name} ${x.spec}`.trim(), unit: x.unit, price: quotePrice(x) })),
+  ];
+  const words = q.trim().split(/\s+/).filter(Boolean);
+  const shown = opts.filter((o) => !words.length || words.some((w) => o.name.includes(w) || o.ref.includes(w)));
+  return (
+    <Win title={`근거 연결 — ${cur?.name ?? ''}`} onClose={onClose} w={760} h={560}
+      buttons={<>
+        <label className="grow"><input type="checkbox" checked={asExp} onChange={(e) => setAsExp(e.target.checked)} /> 근거 합계를 경비로 (중기운반 등)</label>
+        <button type="button" className="btn" onClick={() => onOk('', false)}>연결 풀기</button>
+        <button type="button" className="btn" onClick={onClose}>취소</button>
+        <button type="button" className="btn pri" disabled={!ref} onClick={() => onOk(ref, asExp)}>연결</button>
+      </>}>
+      <div className="ib"><label><span className="k">찾기</span><input type="text" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 260 }} /></label><span className="k">{shown.length} / {opts.length}건 · 없으면 일위대가나 단가산출에서 먼저 만드세요</span></div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
+        <table className="f" style={{ width: '100%' }}>
+          <thead><tr><th>근거</th><th>구분</th><th>품명 · 규격</th><th>단위</th><th>단가</th></tr></thead>
+          <tbody>
+            {shown.map((o) => (
+              <tr key={o.ref} className={'click' + (ref === o.ref ? ' sel' : '')} onClick={() => setRef(o.ref)} onDoubleClick={() => onOk(o.ref, asExp)}>
+                <td className="c"><span className="lk">{o.ref}</span></td><td className="c">{o.kind}</td><td>{o.name}</td><td className="c">{o.unit}</td><td className="n">{won(o.price)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!opts.length && <div className="note">이 공사에는 아직 일위대가·단가산출이 없습니다. [기초자료] 탭에서 일위대가나 단가산출을 만든 뒤 연결하세요.</div>}
+      </div>
+    </Win>
   );
 }

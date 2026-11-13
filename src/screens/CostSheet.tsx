@@ -26,18 +26,25 @@ export default function CostSheet() {
   const R = { ...DEFAULT_RATES, ...s.rates };
   const groupSpan: Record<string, number> = { 재료비: 4, 노무비: 3, 경비: 14 };
   const seen = new Set<string>();
+  const off = new Set<string>(s.exclude ?? []);
+  const toggleRow = () => {
+    const r = d.cost.rows.find((x) => x.key === sel);
+    if (!r) { toast('끄거나 켤 비목을 표에서 먼저 고르세요'); return; }
+    if (!r.optional && !off.has(r.key)) { toast(`${r.label}은(는) 요율 비목이 아니라 끌 수 없습니다`); return; }
+    set((st) => { const cur = new Set(st.exclude ?? []); if (cur.has(r.key)) cur.delete(r.key); else cur.add(r.key); return { ...st, exclude: [...cur] }; });
+    toast(off.has(r.key) ? `${r.label}을(를) 다시 넣었습니다` : `${r.label}을(를) 뺐습니다 — 모든 문서의 원가계산서에 같이 적용됩니다`);
+  };
 
   return (
     <Shell
       doc={`원가계산서 : ${d.name}`}
       toolbar={<>
-        <Group label="양식">
-          <FB icon="form" label="양식" title="원가계산서 양식" onClick={() => toast('표준 원가계산서 양식 (1~18, A~L)')} />
+        <Group label="요율">
           <FB icon="pct" label="요율" title="요율 기준 바꾸기" onClick={() => document.getElementById('rates')?.scrollIntoView()} />
+          <FB icon="trash" label="기본 요율" onClick={() => { set((st) => ({ ...st, rates: {} })); toast('요율을 기본값으로 되돌렸습니다'); }} />
         </Group>
-        <Group label="편집">
-          <FB icon="del" label="한줄삭제" onClick={() => toast('비목을 끄려면 하도급 원가계산서의 반영 체크를 쓰세요')} />
-          <FB icon="trash" label="내용삭제" onClick={() => { set((st) => ({ ...st, rates: {} })); toast('요율을 기본값으로 되돌렸습니다'); }} />
+        <Group label="비목">
+          <FB icon="del" label={sel && off.has(sel) ? '비목 켜기' : '비목 끄기'} title="고른 비목을 이 공사의 모든 원가계산서에서 빼거나 다시 넣기 (요율로 계산하는 비목만)" onClick={toggleRow} />
         </Group>
         <Group label="계산">
           <FB icon="adj" label="역산" title="목표 도급액에서 이윤 역산" onClick={async () => {
@@ -51,7 +58,7 @@ export default function CostSheet() {
           }} />
           <FB icon="safety" label="안전비교" title="산업안전보건관리비 비교" onClick={() => toast(`산업안전보건관리비 ${won(d.cost.get('safety'))}원 — (재료비+직노) × ${(R.safety * 100).toFixed(2)}%`)} />
           <FB icon="bid" label="낙찰" to="/estimate?doc=start" title="착공내역서 (낙찰률)" />
-          <FB icon="recalc" label="재계산" primary onClick={() => toast('전체재계산했습니다')} />
+          <FB icon="recalc" label="재계산" primary onClick={() => toast(`전체재계산 — ${d.name} 도급액 ${won(d.cost.total)}원`)} />
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
@@ -111,7 +118,7 @@ export default function CostSheet() {
                   {inNet ? grp : null}
                   {inNet ? <td>{r.label}</td> : <td colSpan={3}>{r.label}</td>}
                   <td className="c">{r.no}</td>
-                  <td className="n">{r.amount === null ? '' : won(r.amount, { zero: '0' })}</td>
+                  <td className="n">{off.has(r.key) ? <span className="cf">뺌</span> : r.amount === null ? '' : won(r.amount, { zero: '0' })}</td>
                   <td className="c">{r.rate ?? ''}</td>
                   <td>{r.basis ?? ''}</td>
                 </tr>

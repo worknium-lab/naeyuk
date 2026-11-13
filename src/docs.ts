@@ -23,6 +23,7 @@ export function useDocs() {
         waste: sectionAmount(sheet, 'waste').t,
         supplied: sectionAmount(sheet, 'supplied').t,
         rates: s.rates,
+        exclude: new Set(s.exclude ?? []),
         ...opts,
       }),
     });

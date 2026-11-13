@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits, changeSheet,
+  applyRate, flatten, mapSheet, splitByRatio, costSheet, sectionAmount, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits, changeSheet,
   type Basis, type UnitCalc, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
 import { designSheet, PROJECT, REFS } from './data/project';
@@ -35,7 +35,15 @@ export interface ImportedUnit {
   from: string;
 }
 
+/** 공사 기본 정보 */
+export interface ProjectInfo { id: string; name: string; client: string; kind: string; created: string }
+/** 공사 목록에 보이는 요약 */
+export interface ProjectMeta { id: string; name: string; client: string; kind: string; amount: number; phase: string; updated: string }
+
 export interface State {
+  info: ProjectInfo;
+  /** 원가계산서에서 끈 비목 (설계·착공 등 모든 문서) */
+  exclude?: CostKey[];
   design: Sheet;
   bidRate: number;
   phaseOn: boolean;
@@ -52,7 +60,41 @@ export interface State {
   changeFmt: ChangeFmt;
 }
 
-const KEY = 'naeyuk.v2';
+export const EXAMPLE_ID = 'p-yongam';
+const IDX = 'naeyuk.projects';
+const CUR = 'naeyuk.cur';
+const keyOf = (id: string) => (id === EXAMPLE_ID ? 'naeyuk.v2' : `naeyuk.p.${id}`);
+const today = () => new Date().toISOString().slice(0, 10);
+export const EXAMPLE_INFO: ProjectInfo = { id: EXAMPLE_ID, name: PROJECT.name, client: PROJECT.client, kind: '교량 보수', created: '2026-11-12' };
+
+/** 빈 공사 — 기초자료(노임·자재·기계경비)는 자료실 값을 가져오고, 내역서·호표·단산은 비어 있다 */
+export function blankState(info: ProjectInfo, bidRate: number): State {
+  const lib = basisData();
+  const g = (name: string, mark: string, level: Line['level'], children: Line[] = []): Line => ({ id: newId('g'), level, mark, name, spec: '', unit: '', qty: 0, lu: 0, mu: 0, eu: 0, children });
+  const first = g('공종 1', '○', 2, [{ id: newId('n'), level: 0, mark: 'a.', name: '새 항목', spec: '', unit: '식', qty: 1, lu: 0, mu: 0, eu: 0 }]);
+  return {
+    info,
+    design: { sections: [
+      { section: 'main', lines: [g(info.name, '●', 3, [first])] },
+      { section: 'supplied', lines: [g('관급자재대', '●', 3)] },
+      { section: 'waste', lines: [g('폐기물처리비', '●', 3)] },
+    ] },
+    bidRate,
+    phaseOn: false,
+    progressOn: false,
+    phases: [{ name: '1차분', year: today().slice(0, 4), status: '분개 중' }],
+    alloc: {},
+    rounds: [{ name: '제1회', status: '작성 중' }],
+    progress: {},
+    subs: [],
+    changeConfirmed: false,
+    rates: {},
+    exclude: [],
+    basis: { ...lib, units: [], calcs: [], quotes: [] },
+    change: { name: '변경 1회', qty: {}, added: [] },
+    changeFmt: DEFAULT_FMT,
+  };
+}
 
 function initial(): State {
   const design = designSheet();
@@ -70,6 +112,8 @@ function initial(): State {
     }
   }
   return {
+    info: EXAMPLE_INFO,
+    exclude: [],
     design,
     bidRate: PROJECT.bidRate,
     phaseOn: true,
@@ -103,7 +147,7 @@ export function migrate(st: State): State {
   const b = st.basis ?? fresh;
   return {
     ...st,
-    design: mapSheet(st.design, (l) => (!l.children && !l.ref && REFS[l.name] ? { ...l, ref: REFS[l.name], link: true } : l)),
+    design: !st.info || st.info.id === EXAMPLE_ID ? mapSheet(st.design, (l) => (!l.children && !l.ref && REFS[l.name] ? { ...l, ref: REFS[l.name], link: true } : l)) : st.design,
     basis: {
       ...b,
       machines: b.machines ?? fresh.machines,
@@ -118,14 +162,38 @@ export function migrate(st: State): State {
   };
 }
 
-function load(): State {
+function readState(id: string): State | null {
   try {
-    const s = localStorage.getItem(KEY);
-    if (s) return migrate({ ...initial(), ...JSON.parse(s) });
+    const raw = localStorage.getItem(keyOf(id));
+    if (!raw) return null;
+    const j = JSON.parse(raw) as Partial<State>;
+    const base = id === EXAMPLE_ID ? initial() : blankState({ id, name: j.info?.name ?? '새 공사', client: '', kind: '', created: today() }, j.bidRate ?? 0.88);
+    return migrate({ ...base, ...j, info: { ...(j.info ?? (id === EXAMPLE_ID ? EXAMPLE_INFO : base.info)), id } });
   } catch {
-    /* 저장된 값이 없거나 깨졌으면 처음 값 */
+    return null;
   }
-  return initial();
+}
+function writeState(st: State) {
+  try { localStorage.setItem(keyOf(st.info.id), JSON.stringify(st)); } catch { /* 저장 못 해도 화면은 계속 */ }
+}
+export function readIndex(): ProjectMeta[] {
+  try {
+    const j = JSON.parse(localStorage.getItem(IDX) ?? 'null') as ProjectMeta[] | null;
+    if (j?.length) return j;
+  } catch { /* 처음 */ }
+  return [{ id: EXAMPLE_ID, name: EXAMPLE_INFO.name, client: EXAMPLE_INFO.client, kind: EXAMPLE_INFO.kind, amount: 0, phase: '당초', updated: today() }];
+}
+function writeIndex(list: ProjectMeta[]) {
+  try { localStorage.setItem(IDX, JSON.stringify(list)); } catch { /* */ }
+}
+/** 다른 공사의 상태 (참고 창 · 복사용) */
+export function peekProject(id: string): State | null {
+  return id === EXAMPLE_ID ? readState(id) ?? initial() : readState(id);
+}
+
+function load(): State {
+  const cur = localStorage.getItem(CUR) ?? EXAMPLE_ID;
+  return readState(cur) ?? (cur === EXAMPLE_ID ? initial() : readState(EXAMPLE_ID) ?? initial());
 }
 
 interface Ctx {
@@ -142,34 +210,38 @@ interface Ctx {
   editLine: (id: string, patch: Partial<Line>) => void;
   /** 어디에 저장되는지 */
   saveWhere: 'local' | 'account' | 'saving';
+  /** 공사 목록 */
+  projects: ProjectMeta[];
+  openProject: (id: string) => void;
+  /** 새 공사 — from: 'blank' 빈 공사 · 공사 id 를 주면 그 공사를 복사 · State 를 주면 그 내용으로 */
+  createProject: (info: Omit<ProjectInfo, 'id' | 'created'>, bidRate: number, from?: 'blank' | string | State) => string;
+  deleteProject: (id: string) => void;
 }
 
 const C = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(load);
+  const [projects, setProjects] = useState<ProjectMeta[]>(readIndex);
   const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(s));
-    } catch {
-      /* 저장 못 해도 화면은 계속 */
-    }
-  }, [s]);
+  useEffect(() => { writeState(s); try { localStorage.setItem(CUR, s.info.id); } catch { /* */ } }, [s]);
   // claude.ai에서 열면 내 계정 저장소에도 둔다 (다른 기기에서도 이어서)
   const remote = useRef<Remote | null>(null);
   const written = useRef<Record<string, string>>({});
   const [saveWhere, setSaveWhere] = useState<'local' | 'account' | 'saving'>('local');
   useEffect(() => {
     let alive = true;
+    const pid = s.info.id;
+    remote.current = null;
+    written.current = {};
     (async () => {
-      const r = await remoteStore(Object.keys(initial()));
+      const r = await remoteStore(Object.keys(initial()), s.info.id === EXAMPLE_ID ? '' : `${s.info.id}-`);
       if (!alive || !r) return;
       try {
         const got = await r.load();
         if (got) {
           for (const [k, v] of Object.entries(got)) written.current[k] = JSON.stringify(v);
-          setS((cur) => migrate({ ...cur, ...(got as Partial<State>) }));
+          setS((cur) => (cur.info.id === pid ? migrate({ ...cur, ...(got as Partial<State>), info: cur.info }) : cur));
         }
         remote.current = r;
         setSaveWhere('account');
@@ -178,7 +250,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [s.info.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const r = remote.current;
     if (!r) return;
@@ -207,9 +279,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const editLine = useCallback((id: string, patch: Partial<Line>) => {
     setS((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }, []);
+  // 공사 목록의 요약 (도급액 · 단계) 을 맞춰 둔다
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const total = costSheet({ direct: sectionAmount(design, 'main'), waste: sectionAmount(design, 'waste').t, supplied: sectionAmount(design, 'supplied').t, rates: s.rates, exclude: new Set(s.exclude ?? []) }).total;
+      const meta: ProjectMeta = { id: s.info.id, name: s.info.name, client: s.info.client, kind: s.info.kind, amount: total, phase: s.changeConfirmed ? `${s.change.name} 확정` : s.progressOn ? `기성 ${s.rounds[s.rounds.length - 1].name}` : '당초', updated: today() };
+      setProjects((list) => {
+        const old = list.find((x) => x.id === meta.id);
+        if (old && JSON.stringify({ ...old, updated: '' }) === JSON.stringify({ ...meta, updated: '' })) return list;
+        const next = old ? list.map((x) => (x.id === meta.id ? meta : x)) : [...list, meta];
+        writeIndex(next);
+        return next;
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [s, design]);
+  const openProject = (id: string) => {
+    if (id === s.info.id) return;
+    writeState(s);
+    const next = readState(id) ?? (id === EXAMPLE_ID ? initial() : null);
+    if (!next) { setMsg('이 공사의 저장된 내용을 찾지 못했습니다'); return; }
+    setS(next);
+  };
+  const createProject: Ctx['createProject'] = (meta, bidRate, from = 'blank') => {
+    const id = 'p' + Date.now().toString(36);
+    const info: ProjectInfo = { ...meta, id, created: today() };
+    let st: State;
+    if (from === 'blank') st = blankState(info, bidRate);
+    else if (typeof from === 'string') { const src = peekProject(from); st = src ? { ...structuredClone(src), info, bidRate } : blankState(info, bidRate); }
+    else st = migrate({ ...blankState(info, bidRate), ...from, info, bidRate });
+    writeState(s);
+    writeState(st);
+    const m: ProjectMeta = { id, name: info.name, client: info.client, kind: info.kind, amount: 0, phase: '당초', updated: today() };
+    setProjects((list) => { const next = [...list, m]; writeIndex(next); return next; });
+    setS(st);
+    return id;
+  };
+  const deleteProject = (id: string) => {
+    try { localStorage.removeItem(keyOf(id)); } catch { /* */ }
+    setProjects((list) => { const next = list.filter((x) => x.id !== id); writeIndex(next.length ? next : readIndex()); return next.length ? next : readIndex(); });
+    if (id === s.info.id) setS(readState(EXAMPLE_ID) ?? initial());
+  };
   const value: Ctx = {
-    s, set, design, start, contract, units, editLine, saveWhere,
-    reset: () => setS(initial()),
+    s, set, design, start, contract, units, editLine, saveWhere, projects, openProject, createProject, deleteProject,
+    reset: () => setS(s.info.id === EXAMPLE_ID ? initial() : blankState(s.info, s.bidRate)),
     toast: (m) => setMsg(m),
   };
   return (

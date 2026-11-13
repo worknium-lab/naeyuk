@@ -1,7 +1,7 @@
 {
   "name": "worknium-naeyuk",
   "productName": "WORKNIUM 적산",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "WORKNIUM 적산 — 내역서·원가계산서·하도급·설계변경",
   "main": "main.js",
   "author": "WORKNIUM",
@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "pack:win": "electron-packager . WORKNIUM-naeyuk --platform=win32 --arch=x64 --out=out --overwrite --ignore=^/out --ignore=^/node_modules --ignore=^/smoke.js --app-version=0.14.0",
+    "pack:win": "electron-packager . WORKNIUM-naeyuk --platform=win32 --arch=x64 --out=out --overwrite --ignore=^/out --ignore=^/node_modules --ignore=^/smoke.js --app-version=0.15.0",
     "build:app": "cd .. && npm run build:single && cd desktop && node -e \"require('fs').mkdirSync('app',{recursive:true});require('fs').copyFileSync('../dist/single.html','app/index.html')\""
   },
   "devDependencies": {

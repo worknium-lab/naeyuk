@@ -1,9 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Win } from '../ui/Shell';
-import { useStore } from '../store';
+import { useStore, peekProject } from '../store';
 import { useNavigate } from 'react-router-dom';
-import { won, flatten, insertAfter, newId, floor, type Line, type ULine, type UnitDef } from '../engine';
+import { won, flatten, insertAfter, newId, floor, normName, resolveSheet, type Basis, type Line, type ULine, type UnitDef } from '../engine';
 
+/** 내역서에 넣을 공종 — 예시 공사는 포장면, 그 밖에는 순공사비의 마지막 공종 */
+function targetGroup(design: { sections: { section: string; lines: Line[] }[] }): Line | undefined {
+  const all = design.sections.flatMap((x) => flatten(x.lines as Line[]));
+  const g23 = all.find((r) => r.line.id === 'G23')?.line;
+  if (g23) return g23;
+  const root = design.sections.find((x) => x.section === 'main')?.lines[0];
+  return root?.children?.filter((c) => c.children).at(-1) ?? root;
+}
 const nextUnitNo = (units: UnitDef[]) => Math.max(0, ...units.map((u) => Number(u.no.replace(/\D/g, '')) || 0)) + 1;
 import tables from '../data/tables.json';
 import { REF_PROJECT, REF_BASIS, CURRENT_LABOR, CURRENT_MATERIAL, LABOR_INDEX } from '../data/reference';
@@ -31,6 +39,21 @@ export function Pumsem({ onClose }: { onClose: () => void }) {
     { n: '공구손료 및 잡재료비(연마지)', q: 3, f: '[주]④ 노무비의 3%', u: 0, l: 0, m: tool },
   ];
   const L = floor(l1 + l2), M = floor(tool);
+  const [into, setInto] = useState(s.basis.units[0]?.no ?? '');
+  const addTo = () => {
+    const u = s.basis.units.find((x) => x.no === into);
+    if (!u) return;
+    const stamp = Date.now().toString(36);
+    const add: ULine[] = [
+      { id: `${into}-${stamp}-1`, kind: 'labor', ref: '도장공', name: '도 장 공', spec: '', unit: '인', qty: +(2 / area).toFixed(4), note: `2인/${area}㎡` },
+      { id: `${into}-${stamp}-2`, kind: 'labor', ref: '보통인부', name: '보통인부', spec: '', unit: '인', qty: +(1 / area).toFixed(4), note: `1인/${area}㎡` },
+      { id: `${into}-${stamp}-3`, kind: 'pct', col: 'm', name: '공구손료 및 잡재료비(연마지)', spec: '노무비의', unit: '%', qty: 3 },
+    ];
+    set((st) => ({ ...st, basis: { ...st.basis, units: st.basis.units.map((x) => (x.no === into ? { ...x, lines: [...x.lines, ...add] } : x)) } }));
+    toast(`${into} ${u.name}에 품셈 3줄을 넣었습니다`);
+    nav(`/unit?no=${into}`);
+    onClose();
+  };
   const make = () => {
     const no = `제${nextUnitNo(s.basis.units)}호표`;
     const lines: ULine[] = [
@@ -48,7 +71,12 @@ export function Pumsem({ onClose }: { onClose: () => void }) {
       buttons={<>
         <span className="grow">팝업을 띄운 채로 뒤의 작업 화면을 계속 쓸 수 있습니다</span>
         <button type="button" className="btn" onClick={onClose}>닫기</button>
-        <button type="button" className="btn" onClick={() => { toast('현재 호표에 3줄을 넣었습니다'); onClose(); }}>현재 호표에 줄로 넣기</button>
+        {s.basis.units.length > 0 && <>
+          <select value={into} onChange={(e) => setInto(e.target.value)} style={{ maxWidth: 220 }}>
+            {s.basis.units.map((u) => <option key={u.no} value={u.no}>{u.no} {u.name}</option>)}
+          </select>
+          <button type="button" className="btn" onClick={addTo}>이 호표에 줄로 넣기</button>
+        </>}
         <button type="button" className="btn pri" onClick={make}>새 일위대가로 만들기</button>
       </>}>
       <div className="ib">
@@ -110,15 +138,16 @@ export function MarketPrice({ onClose }: { onClose: () => void }) {
   const lr = Number(r[5].replace('%', '')) / 100;
   const L = floor(price * lr * 10) / 10, E = +(price - L).toFixed(1);
   const put = () => {
-    set((st) => ({
-      ...st,
-      design: insertAfter(st.design, 'G23', [{ id: newId('m'), level: 0, mark: '', name: `차선도색(${r[1]})`, spec: r[2], unit: '㎡', qty: 1, lu: floor(L), mu: 0, eu: floor(E), ref: r[0] }]),
-    }));
-    toast(`포장면 공종 맨 앞에 ${r[0]}을(를) 넣었습니다 — 수량을 고치세요`);
+    let g: Line | undefined;
+    set((st) => {
+      g = targetGroup(st.design);
+      return g ? { ...st, design: insertAfter(st.design, g.id, [{ id: newId('m'), level: 0, mark: '', name: `차선도색(${r[1]})`, spec: r[2], unit: '㎡', qty: 1, lu: floor(L), mu: 0, eu: floor(E), ref: r[0] }]) } : st;
+    });
+    toast(`설계내역서 공종 맨 앞에 ${r[0]}을(를) 넣었습니다 — 수량을 고치세요`);
     onClose();
   };
   return (
-    <Win title="표준시장단가 검색 — 내역서 포장면 공종에 넣기" onClose={onClose} w={1200} h={820}
+    <Win title="표준시장단가 검색 — 설계내역서에 넣기" onClose={onClose} w={1200} h={820}
       buttons={<>
         <span className="grow">넣은 단가는 공사의 표준시장단가 시트에 등록되고, 반기 단가집이 바뀌면 일괄 바꾸기로 갱신합니다</span>
         <button type="button" className="btn" onClick={onClose}>닫기</button>
@@ -180,8 +209,81 @@ function collect(ref: string, acc = { labor: [] as string[], material: [] as str
   return acc;
 }
 
+/** 다른 공사의 근거(호표·단산·견적과 그 안의 노임·자재·기계경비)를 이 공사로 옮긴다 — 번호가 겹치면 새 번호 */
+function importBasis(src: Basis, dst: Basis, refs: string[]) {
+  const units = new Set<string>(), calcs = new Set<string>(), quotes = new Set<string>(), machines = new Set<string>(), wages = new Set<string>(), mats = new Set<string>();
+  const walk = (ref: string) => {
+    const u = src.units.find((x) => x.no === ref);
+    if (u && !units.has(ref)) {
+      units.add(ref);
+      for (const ln of u.lines) {
+        if ((ln.kind === 'unit' || ln.kind === 'calc') && ln.ref) walk(ln.ref);
+        if (ln.kind === 'labor') wages.add(normName(ln.ref ?? ln.name));
+        if (ln.kind === 'mat' && ln.ref) mats.add(ln.ref);
+        if (ln.kind === 'machine' && ln.ref) machines.add(ln.ref);
+      }
+      return;
+    }
+    const c = src.calcs.find((x) => x.no === ref);
+    if (c && !calcs.has(ref)) {
+      calcs.add(ref);
+      for (const ln of c.lines ?? []) {
+        if (ln.k === 'labor') wages.add(normName(ln.wage));
+        if (ln.k === 'mat') mats.add(ln.mat);
+        if (ln.k === 'mach') machines.add(ln.machine);
+      }
+      return;
+    }
+    if (src.quotes?.some((x) => x.no === ref)) quotes.add(ref);
+  };
+  refs.forEach(walk);
+  for (const m of machines) { const md = src.machines?.find((x) => x.no === m); if (md?.operator) wages.add(normName(md.operator)); }
+  const map = new Map<string, string>();
+  let un = nextUnitNo(dst.units);
+  for (const u of units) map.set(u, `제${un++}호표`);
+  let cn = Math.max(0, ...dst.calcs.map((c) => Number(c.no.replace(/\D/g, '')) || 0)) + 1;
+  for (const c of calcs) map.set(c, `단산${cn++}`);
+  let qn = Math.max(0, ...(dst.quotes ?? []).map((q) => Number(q.no.replace(/\D/g, '')) || 0)) + 1;
+  for (const q of quotes) map.set(q, `견적${qn++}`);
+  const dm = [...(dst.machines ?? [])];
+  let mn = Math.max(0, ...dm.map((m) => Number(m.no.replace(/\D/g, '')) || 0)) + 1;
+  const mmap = new Map<string, string>();
+  for (const m of machines) {
+    const md = src.machines?.find((x) => x.no === m);
+    if (!md) continue;
+    const same = dm.find((x) => x.name === md.name && x.spec === md.spec);
+    if (same) { mmap.set(m, same.no); continue; }
+    const no = dm.some((x) => x.no === m) ? `M${mn++}` : m;
+    dm.push({ ...md, no }); mmap.set(m, no);
+  }
+  const W = { ...dst.wages };
+  let wAdd = 0;
+  for (const w of wages) if (!W[w] && src.wages[w]) { W[w] = src.wages[w]; wAdd++; }
+  const M = { ...dst.mats };
+  let mAdd = 0;
+  for (const k of mats) if (!M[k] && src.mats[k]) { M[k] = src.mats[k]; mAdd++; }
+  const re = (r?: string) => (r ? map.get(r) ?? r : r);
+  const newUnits = [...units].map((no): UnitDef => {
+    const u = src.units.find((x) => x.no === no)!;
+    return { ...u, no: map.get(no)!, from: `${u.no} 가져옴`, lines: u.lines.map((ln) => ({ ...ln, id: `${map.get(no)}-${ln.id}`, ref: ln.kind === 'machine' ? mmap.get(ln.ref ?? '') ?? ln.ref : re(ln.ref) })) };
+  });
+  const newCalcs = [...calcs].map((no) => {
+    const c = src.calcs.find((x) => x.no === no)!;
+    return { ...c, no: map.get(no)!, lines: c.lines?.map((ln) => (ln.k === 'mach' ? { ...ln, machine: mmap.get(ln.machine) ?? ln.machine } : ln)) };
+  });
+  const newQuotes = [...quotes].map((no) => ({ ...src.quotes!.find((x) => x.no === no)!, no: map.get(no)! }));
+  return {
+    basis: { ...dst, wages: W, mats: M, machines: dm, units: [...dst.units, ...newUnits], calcs: [...dst.calcs, ...newCalcs], quotes: [...(dst.quotes ?? []), ...newQuotes] },
+    map, counts: { units: units.size, calcs: calcs.size, quotes: quotes.size, machines: [...mmap.values()].length, wages: wAdd, mats: mAdd },
+  };
+}
+
 export function RefCopy({ onClose }: { onClose: () => void }) {
-  const { s, set, toast } = useStore();
+  const { s, set, toast, projects } = useStore();
+  const [srcId, setSrcId] = useState<string>('ref');
+  const srcState = useMemo(() => (srcId === 'ref' ? null : peekProject(srcId)), [srcId]);
+  const srcName = srcId === 'ref' ? '국도3호선 ○○교 보수공사' : srcState?.info.name ?? '';
+  const srcRows = useMemo(() => (srcState ? flatten(resolveSheet(srcState.design, srcState.basis).sections.flatMap((x) => x.lines)) : null), [srcState]);
   const [checked, setChecked] = useState<Set<string>>(new Set(['R3', 'R6', 'R9']));
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['RG2']));
   const [dialog, setDialog] = useState(false);
@@ -189,10 +291,24 @@ export function RefCopy({ onClose }: { onClose: () => void }) {
   const [priceMode, setPriceMode] = useState<'current' | 'keep'>('current');
   const [dupMode, setDupMode] = useState<'link' | 'new'>('link');
   const [zeroQty, setZeroQty] = useState(false);
-  const rows = useMemo(() => flatten(REF_PROJECT.lines), []);
+  const rows = useMemo(() => srcRows ?? flatten(REF_PROJECT.lines), [srcRows]);
   const vis = rows.filter((r) => !r.ancestors.some((a) => collapsed.has(a)));
   const picked = rows.filter((r) => checked.has(r.line.id) && !r.line.children).map((r) => r.line);
   const targets = flatten(s.design.sections[0].lines).filter((r) => r.line.children);
+  useEffect(() => { if (!targets.some((t) => t.line.id === target) && targets.length) setTarget(targets[targets.length - 1].line.id); }, [targets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** 내 다른 공사에서 붙이기 — 근거는 번호를 새로 매겨 함께 옮긴다 */
+  const importFromProject = (withBasis: boolean) => {
+    if (!srcState) return;
+    const refs = [...new Set(picked.map((l) => l.ref).filter((x): x is string => !!x))];
+    const r = withBasis ? importBasis(srcState.basis, s.basis, refs) : null;
+    const items: Line[] = picked.map((l) => ({
+      ...l, id: newId('r'), qty: zeroQty ? 0 : l.qty, note: `참고: ${srcName}`,
+      ref: withBasis && l.ref ? r!.map.get(l.ref) ?? l.ref : undefined, link: withBasis && !!l.ref && !!l.link,
+    }));
+    set((st) => ({ ...st, design: insertAfter(st.design, target, items), basis: r ? r.basis : st.basis }));
+    toast(r ? `${items.length}줄을 붙였습니다 — 호표 ${r.counts.units} · 단산 ${r.counts.calcs} · 견적 ${r.counts.quotes} · 노임 ${r.counts.wages} · 자재 ${r.counts.mats}개를 함께 가져왔습니다` : `${items.length}줄만 복사했습니다 (단가는 값으로)`);
+    onClose();
+  };
 
   // 연결된 근거 모으기
   const deps = useMemo(() => {
@@ -262,15 +378,20 @@ export function RefCopy({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <Win title="참고 내역서 — 국도3호선 ○○교 보수공사.wnx (읽기 전용)" onClose={onClose} w={860} h={760} x={Math.max(10, window.innerWidth - 880)} y={130} float modal={false}
+      <Win title={`참고 내역서 — ${srcName} (읽기 전용)`} onClose={onClose} w={860} h={760} x={Math.max(10, window.innerWidth - 880)} y={130} float modal={false}
         buttons={<>
-          <span className="grow" style={{ color: '#1F2329', fontSize: 12.5 }}>선택 <b>{picked.length}줄</b> · 함께 가져올 근거: 일위대가 {deps.units.length} · 단가산출 {deps.calcs.length} · 기계경비 0 · 자재 {deps.mat.length} · 노임 {deps.labor.length}</span>
-          <button type="button" className="btn" disabled={!picked.length} onClick={() => doImport(false)}>줄만 복사</button>
-          <button type="button" className="btn pri" disabled={!picked.length} onClick={() => setDialog(true)}>근거와 함께 붙이기…</button>
+          <span className="grow" style={{ color: '#1F2329', fontSize: 12.5 }}>선택 <b>{picked.length}줄</b>{srcState ? <> · 연결 근거 {new Set(picked.map((l) => l.ref).filter(Boolean)).size}개 (안의 호표·단산·노임·자재까지 함께 옮깁니다)</> : <> · 함께 가져올 근거: 일위대가 {deps.units.length} · 단가산출 {deps.calcs.length} · 기계경비 0 · 자재 {deps.mat.length} · 노임 {deps.labor.length}</>}</span>
+          <button type="button" className="btn" disabled={!picked.length} onClick={() => (srcState ? importFromProject(false) : doImport(false))}>줄만 복사</button>
+          <button type="button" className="btn pri" disabled={!picked.length} onClick={() => (srcState ? importFromProject(true) : setDialog(true))}>근거와 함께 붙이기{srcState ? '' : '…'}</button>
         </>}>
         <div className="ib" style={{ gap: 6 }}>
-          <button type="button" className="vb" onClick={() => toast('다른 공사 파일 열기 (데스크톱 판)')}>공사 열기…</button>
-          <select><option>착공내역서</option><option>설계내역서</option><option>준공내역서</option></select>
+          <label><span className="k">공사</span>
+            <select value={srcId} onChange={(e) => { setSrcId(e.target.value); setChecked(new Set()); setCollapsed(new Set()); }} style={{ maxWidth: 260 }}>
+              <option value="ref">국도3호선 ○○교 보수공사 (참고 예시)</option>
+              {projects.filter((p) => p.id !== s.info.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <span className="k">설계내역서</span>
           <button type="button" className="vb" onClick={() => setCollapsed(new Set())}>모두 펼침</button>
           <button type="button" className="vb" onClick={() => setCollapsed(new Set(rows.filter((r) => r.line.children && r.depth >= 1).map((r) => r.line.id)))}>공종까지</button>
           <div style={{ flex: 1 }} />
@@ -300,13 +421,13 @@ export function RefCopy({ onClose }: { onClose: () => void }) {
                     </td>
                     <td>{l.spec}</td><td className="c">{l.unit}</td><td className="n">{g ? '' : l.qty.toLocaleString()}</td>
                     <td className="n">{g ? '' : won(l.lu + l.mu + l.eu)}</td>
-                    <td>{l.ref && <span className="lk">{l.ref}</span>}{b && b.deps.length > 0 && <> → {b.kind === 'unit' ? '일위 ' : ''}{b.deps.map((d) => d.replace(/제|호표/g, '')).join('·')}</>}{b && b.deps.length === 0 && b.kind === 'calc' && ' → 노임·자재'}</td>
+                    <td>{l.ref && <span className="lk">{l.ref}</span>}{!srcState && b && b.deps.length > 0 && <> → {b.kind === 'unit' ? '일위 ' : ''}{b.deps.map((d) => d.replace(/제|호표/g, '')).join('·')}</>}{!srcState && b && b.deps.length === 0 && b.kind === 'calc' && ' → 노임·자재'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {picked[0]?.ref && REF_BASIS[picked[0].ref] && (
+          {!srcState && picked[0]?.ref && REF_BASIS[picked[0].ref] && (
             <div className="calc" style={{ margin: '10px 12px', fontFamily: 'inherit' }}>
               <b>{picked[0].name}</b>의 연결 근거 — {REF_BASIS[picked[0].ref].name}
               {REF_BASIS[picked[0].ref].deps.length > 0 && <> 안에 {REF_BASIS[picked[0].ref].deps.map((d) => `${d}(${REF_BASIS[d].name})`).join('·')}가 들어 있고,</>} 노임 {collect(picked[0].ref).labor.length}종 · 자재 {collect(picked[0].ref).material.length}종이 연결되어 있습니다.

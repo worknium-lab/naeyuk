@@ -28,7 +28,7 @@ export function MobileHome() {
   const cum = docs.get('progressCum');
   const rate = cum ? cum.cost.get('D') / st.cost.get('D') : 0;
   return (
-    <Frame title="국도43호선 용암교 보수공사" sub="○○국토관리사무소 · 교량 보수">
+    <Frame title={s.info.name} sub={[s.info.client, s.info.kind].filter(Boolean).join(" · ")}>
       <div className="card">
         <h3>계약</h3>
         <div className="kv"><span>설계 도급액</span><b>{won(docs.get('design').cost.total)}</b></div>

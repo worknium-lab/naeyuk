@@ -66,7 +66,7 @@ export default function Change() {
           <FB icon="net" label="원가계산서" to="/cost?doc=change" />
         </Group>
         <Group label="출력">
-          <FB icon="excel" label="엑셀" title="계약내역서·총괄표·원가계산서·증감대비 (빨강/검정 그대로)" onClick={() => exportXlsx(`설계변경 ${co.name} — 국도43호선 용암교.xlsx`, changeWorkbook(before, after, fmt, `국도43호선 용암교 보수공사 ${co.name}`)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
+          <FB icon="excel" label="엑셀" title="계약내역서·총괄표·원가계산서·증감대비 (빨강/검정 그대로)" onClick={() => exportXlsx(`설계변경 ${co.name} — ${s.info.name}.xlsx`, changeWorkbook(before, after, fmt, `${s.info.name} ${co.name}`)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
         </Group>
       </>}
       info={<>

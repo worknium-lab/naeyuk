@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
-import { PROJECT } from '../data/project';
 import { useStore, migrate } from '../store';
 import { useAsk, canPrint } from './Ask';
 import { saveFile } from '../platform';
@@ -29,21 +28,23 @@ type MenuItem = { label: string; to?: string; key?: string; act?: () => void } |
 
 function Menu({ toolbar }: { toolbar?: ReactNode }) {
   const nav = useNavigate();
-  const { reset, toast, s, set } = useStore();
+  const { reset, toast, s, createProject } = useStore();
   const ask = useAsk();
   const fileRef = useRef<HTMLInputElement>(null);
   const [saveText, setSaveText] = useState<string | null>(null);
   const save = async () => {
-    const text = JSON.stringify({ app: 'naeyuk', format: 1, saved: new Date().toISOString(), project: PROJECT.name, state: s });
-    if (await saveFile(`${PROJECT.name}.wnx`, text, canPrint())) toast('공사 파일(.wnx)을 내려받았습니다');
+    const text = JSON.stringify({ app: 'naeyuk', format: 1, saved: new Date().toISOString(), project: s.info.name, state: s });
+    if (await saveFile(`${s.info.name}.wnx`, text, canPrint())) toast('공사 파일(.wnx)을 내려받았습니다');
     else setSaveText(text);
   };
   const load = async (f: File) => {
     try {
       const j = JSON.parse(await f.text());
       if (j.app !== 'naeyuk' || !j.state) throw new Error('형식');
-      set((cur) => migrate({ ...cur, ...j.state }));
-      toast(`${f.name}을(를) 열었습니다`);
+      const st = migrate({ ...j.state });
+      const name = st.info?.name ?? f.name.replace(/\.wnx(\.json)?$/, '');
+      createProject({ name, client: st.info?.client ?? '', kind: st.info?.kind ?? '' }, st.bidRate ?? 0.88, st);
+      toast(`${f.name}을(를) 새 공사로 열었습니다 — 공사 목록에 추가됐습니다`);
     } catch {
       toast('이 프로그램에서 저장한 공사 파일(.wnx)이 아닙니다');
     }
@@ -66,7 +67,7 @@ function Menu({ toolbar }: { toolbar?: ReactNode }) {
       { label: '공사 목록', to: '/' }, { label: '프로젝트 홈', to: '/project' }, '-',
       { label: '공사 파일 열기…', act: () => fileRef.current?.click() }, { label: '공사 파일 저장 (.wnx)', key: 'Ctrl+S', act: save }, '-',
       { label: '다른 내역서 열기 (참고)', act: () => openPopup('refcopy') }, '-',
-      { label: '예시 데이터로 되돌리기', act: async () => { if (await ask({ title: '예시 데이터로 되돌리기', label: '입력한 내용을 지우고 예시 데이터로 되돌릴까요?', confirmOnly: true, ok: '되돌리기' })) { reset(); toast('예시 데이터로 되돌렸습니다'); } } },
+      { label: '이 공사 처음 상태로 되돌리기', act: async () => { if (await ask({ title: '처음 상태로 되돌리기', label: `${s.info.name}에 입력한 내용을 지우고 처음 상태로 되돌릴까요?`, confirmOnly: true, ok: '되돌리기' })) { reset(); toast('처음 상태로 되돌렸습니다'); } } },
       { label: '모바일 화면', to: '/m' },
     ],
   };
@@ -164,6 +165,11 @@ function WorkTabs({ set }: { set: TabSet }) {
   );
 }
 
+function ProjTitle({ doc }: { doc: string }) {
+  const { s } = useStore();
+  return <span style={{ flex: 1 }}>[{s.info.name}] {doc}</span>;
+}
+
 function SaveBadge() {
   const { saveWhere } = useStore();
   const t = saveWhere === 'account' ? '내 계정에 저장됨' : saveWhere === 'saving' ? '저장 중…' : navigator.userAgent.includes('Electron') ? '이 PC에 저장' : '이 브라우저에 저장';
@@ -185,7 +191,7 @@ export function Shell({ doc, toolbar, info, left, right, children, tabs = 'work'
   return (
     <div className="app">
       <div className="titlebar">
-        <span style={{ flex: 1 }}>[{PROJECT.file}] {doc}</span>
+        <ProjTitle doc={doc} />
         <SaveBadge />
         <Link to="/m" title="모바일 화면 보기">모바일</Link>
       </div>

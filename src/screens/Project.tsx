@@ -5,6 +5,7 @@ import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { exportXlsx } from '../xlsx';
 import { sheetRows, costRows, compareRows, docBook } from '../exports';
+import { useAsk } from '../ui/Ask';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
 import { won, allLines, unassigned, pct } from '../engine';
@@ -13,6 +14,16 @@ type DocKey = 'design' | 'start' | 'phase' | 'progress' | 'change' | 'sub' | 'fi
 
 export default function Project() {
   const { s, set, contract, toast } = useStore();
+  const ask = useAsk();
+  const editInfo = async () => {
+    const name = await ask({ title: '공사 정보', label: '공사명', value: s.info.name });
+    if (name === null) return;
+    const client = await ask({ title: '공사 정보', label: '발주처', value: s.info.client });
+    if (client === null) return;
+    const kind = await ask({ title: '공사 정보', label: '공종 (도로·교량·하천·상하수도·건축 …)', value: s.info.kind });
+    set((st) => ({ ...st, info: { ...st.info, name: name.trim() || st.info.name, client: client.trim(), kind: (kind ?? st.info.kind).trim() } }));
+    toast('공사 정보를 고쳤습니다');
+  };
   const docs = useDocs();
   const nav = useNavigate();
   const [sel, setSel] = useState<DocKey>('start');
@@ -82,14 +93,17 @@ export default function Project() {
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
-          <FB icon="excel" label="엑셀" title="모든 문서를 시트별로" onClick={() => exportXlsx('국도43호선 용암교 보수공사 — 내역서 일체.xlsx', [
+          <FB icon="excel" label="엑셀" title="모든 문서를 시트별로" onClick={() => exportXlsx(`${s.info.name} — 내역서 일체.xlsx`, [
             ...docs.list.flatMap((d) => docBook(d.name, d.sheet, d.cost, { sheet: d.name.slice(0, 24), cost: d.name.slice(0, 20) + ' 원가' }).reverse()),
           ]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
         </Group>
       </>}
       info={<>
-        <span><span className="k">공사명</span> <b>국도43호선 용암교 보수공사</b></span>
-        <span><span className="k">발주처</span> ○○국토관리사무소</span>
+        <span><span className="k">공사명</span> <b>{s.info.name}</b> <button type="button" className="vb mini" onClick={editInfo}>고치기</button></span>
+        <span><span className="k">발주처</span> {s.info.client || '—'}</span>
+        <label><span className="k">낙찰률</span><input type="text" key={s.bidRate} defaultValue={(s.bidRate * 100).toFixed(3)} style={{ width: 70, textAlign: 'right' }}
+          onBlur={(e) => { const v = Number(e.target.value) / 100; if (v > 0 && v <= 1.2 && v !== s.bidRate) { set((st) => ({ ...st, bidRate: v })); toast(`낙찰률을 ${(v * 100).toFixed(3)}%로 바꿨습니다 — 착공내역서와 그 뒤 문서가 다시 계산됩니다`); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />%</label>
         <label><input type="checkbox" checked={s.phaseOn} onChange={(e) => set((st) => ({ ...st, phaseOn: e.target.checked }))} />차수공사 사용 (장기계속공사)</label>
         <label><input type="checkbox" checked={s.progressOn} onChange={(e) => set((st) => ({ ...st, progressOn: e.target.checked }))} />기성 관리 사용</label>
         <label><input type="checkbox" checked={s.changeConfirmed} onChange={(e) => set((st) => ({ ...st, changeConfirmed: e.target.checked }))} />설계변경 1회 확정</label>

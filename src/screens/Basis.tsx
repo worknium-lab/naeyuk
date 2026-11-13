@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Shell, FB, Group, usePopup } from '../ui/Shell';
+import { Shell, FB, Group, usePopup, Win } from '../ui/Shell';
 import { canPrint, useAsk } from '../ui/Ask';
 import { useStore } from '../store';
 import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, calcEval, mapSheet, machinePrice, quotePrice, type MachineDef, type QuoteDef, type CalcDef, type CalcLine, type Line, type ULine, type ULineKind, type UnitDef } from '../engine';
@@ -35,6 +35,28 @@ function FoldBar({ fold, extra }: { fold: ReturnType<typeof useFold>; extra?: Re
 const Tg = ({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) => (
   <button type="button" className="tg" aria-expanded={open} aria-label={(open ? '접기: ' : '펼치기: ') + label} onClick={(e) => { e.stopPropagation(); onClick(); }}>{open ? '▾' : '▸'}</button>
 );
+
+/* ---------- 입력 창 (여러 칸) ---------- */
+type FField = { k: string; label: string; v?: string; opts?: string[]; num?: boolean; w?: number };
+function FormWin({ title, fields, onClose, onOk, hint }: { title: string; fields: FField[]; onClose: () => void; onOk: (v: Record<string, string>) => string | void; hint?: string }) {
+  const [v, setV] = useState<Record<string, string>>(Object.fromEntries(fields.map((f) => [f.k, f.v ?? (f.opts ? f.opts[0] : '')])));
+  const [err, setErr] = useState('');
+  return (
+    <Win title={title} onClose={onClose} w={520} h={Math.min(640, 150 + fields.length * 40)}
+      buttons={<><span className="grow" style={{ color: '#C00000' }}>{err}</span><button type="button" className="btn" onClick={onClose}>취소</button>
+        <button type="button" className="btn pri" onClick={() => { const e = onOk(v); if (e) setErr(e); }}>넣기</button></>}>
+      <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'center' }}>
+        {fields.map((f) => <Fragment key={f.k}>
+          <label htmlFor={'ff-' + f.k}>{f.label}</label>
+          {f.opts ? <select id={'ff-' + f.k} value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} style={{ height: 26 }}>{f.opts.map((o) => <option key={o}>{o}</option>)}</select>
+            : <input id={'ff-' + f.k} type="text" value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} style={{ height: 26, width: f.w, textAlign: f.num ? 'right' : 'left' }} />}
+        </Fragment>)}
+      </div>
+      {hint && <div className="hint" style={{ padding: '0 16px' }}>{hint}</div>}
+    </Win>
+  );
+}
+const toNum = (x: string) => Number(String(x).replace(/,/g, ''));
 
 /* ---------- 일위대가 ---------- */
 const KIND_LABEL: Record<string, string> = { labor: '노임', mat: '자재', unit: '일위', calc: '단산', machine: '장비', pct: '%', fixed: '고정' };
@@ -406,12 +428,22 @@ export function Machine() {
   const upd = (no: string, patch: Partial<MachineDef>) => set((st) => ({ ...st, basis: { ...st.basis, machines: (st.basis.machines ?? []).map((m) => (m.no === no ? { ...m, ...patch } : m)) } }));
   const setFuel = (k: string, v: number) => set((st) => ({ ...st, basis: { ...st.basis, fuel: { ...(st.basis.fuel ?? {}), [k]: v } } }));
   const f1 = (x: number) => x.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
-  const usedBy = (no: string) => s.basis.calcs.filter((c) => c.machineLines?.some((x) => x.machine === no)).map((c) => c.no);
+  const usedBy = (no: string) => s.basis.calcs.filter((c) => c.machineLines?.some((x) => x.machine === no) || c.lines?.some((x) => x.k === 'mach' && x.machine === no)).map((c) => c.no);
+  const [adding, setAdding] = useState(false);
+  const addMachine = (v: Record<string, string>) => {
+    if (!v.name.trim()) return '기계 이름을 넣으세요';
+    const no = `M${Math.max(0, ...ms.map((m) => Number(m.no.replace(/\D/g, '')) || 0)) + 1}`;
+    const def: MachineDef = { no, name: v.name.trim(), spec: v.spec.trim(), losses: toNum(v.price) ? [{ name: '손료', price: toNum(v.price), coef: toNum(v.coef) }] : [], fuel: v.fuel === '없음' ? '' : v.fuel, fuelQty: toNum(v.fuelQty) || 0, sundry: toNum(v.sundry) || 0, operator: v.operator === '없음' ? '' : v.operator };
+    set((st) => ({ ...st, basis: { ...st.basis, machines: [...(st.basis.machines ?? []), def] } }));
+    if (!fold.isOpen(no)) fold.toggle(no);
+    toast(`${no.replace('M', '기계')} ${def.name}을(를) 넣었습니다 — 단가산출·일위대가의 장비 줄에서 고를 수 있습니다`);
+    setAdding(false);
+  };
   return (
     <Shell
       doc="기계경비"
       toolbar={<>
-        <Group label="장비"><FB icon="machine" label="장비" onClick={() => toast('Main에서 장비 불러오기 (데스크톱 판)')} /></Group>
+        <Group label="장비"><FB icon="new" label="장비 추가" primary onClick={() => setAdding(true)} /></Group>
         <Group label="기준"><FB icon="rate" label="적용기준" primary onClick={() => document.getElementById('fuel')?.scrollIntoView()} /></Group>
         <Group label="기타"><FB icon="search" label="사용처" onClick={() => toast(ms.map((m) => `${m.name}: ${usedBy(m.no).join(', ') || '없음'}`).join(' · '))} /></Group>
       </>}
@@ -472,6 +504,15 @@ export function Machine() {
           </tbody>
         </table>
       </div>
+      {adding && <FormWin title="기계경비 — 장비 추가" onClose={() => setAdding(false)} onOk={addMachine}
+        hint="시간당 손료 = 기계가격 × 손료계수 × 10⁻⁷, 주연료 = 연료량 × 연료단가, 잡품 = 주연료의 %, 운전사 = 노임 × 1/8 × 16/12 × 25/20"
+        fields={[
+          { k: 'name', label: '기계명', v: '' }, { k: 'spec', label: '규격', v: '' },
+          { k: 'price', label: '기계가격 (원)', v: '', num: true }, { k: 'coef', label: '손료계수 (×10⁻⁷)', v: '', num: true },
+          { k: 'fuel', label: '주연료', opts: ['경유', '휘발유', '없음'] }, { k: 'fuelQty', label: '연료량 (ℓ/hr)', v: '', num: true },
+          { k: 'sundry', label: '잡품 (주연료의 %)', v: '', num: true },
+          { k: 'operator', label: '운전사', opts: ['없음', ...Object.values(s.basis.wages).filter((w) => /운전/.test(w.name)).map((w) => w.name)] },
+        ]} />}
     </Shell>
   );
 }
@@ -490,11 +531,35 @@ export function Material() {
   const prices = src ? SRC.map((name, k) => ({ name, price: src[4 + k * 2], page: src[5 + k * 2] })).filter((x) => x.price) : [];
   const setPrice = (key: string, price: number) => set((st) => ({ ...st, basis: { ...st.basis, mats: { ...st.basis.mats, [key]: { ...st.basis.mats[key], price } } } }));
   const used = m ? usages(s.basis, design, m.key) : [];
+  const [adding, setAdding] = useState(false);
+  const addMat = (v: Record<string, string>) => {
+    if (!v.name.trim()) return '품명을 넣으세요';
+    const key = `${normName(v.name)}|${normName(v.spec)}`;
+    if (s.basis.mats[key]) return '같은 품명·규격의 자재가 이미 있습니다';
+    set((st) => ({ ...st, basis: { ...st.basis, mats: { ...st.basis.mats, [key]: { key, name: v.name.trim(), spec: v.spec.trim(), unit: v.unit.trim(), price: toNum(v.price) || 0 } } } }));
+    setSel(key); setAdding(false);
+    toast(`${v.name}을(를) 넣었습니다 — 일위대가·단가산출의 자재 줄에서 고를 수 있습니다`);
+  };
+  const refreshAll = () => {
+    let n = 0, d = 0;
+    const next = { ...s.basis.mats };
+    for (const x of Object.values(next)) {
+      const r = findSrc(x.name, x.spec);
+      if (!r) continue;
+      const ps = SRC.map((_, k) => parseNum(r[4 + k * 2])).filter((p) => p > 0);
+      if (!ps.length) continue;
+      const min = Math.min(...ps);
+      if (min !== x.price) { d += min - x.price; next[x.key] = { ...x, price: min }; n++; }
+    }
+    if (!n) { toast('물가자료와 다른 자재가 없습니다'); return; }
+    set((st) => ({ ...st, basis: { ...st.basis, mats: next } }));
+    toast(`자재 ${n}종을 물가자료 최저가로 바꿨습니다 (단가 차이 합 ${d > 0 ? '+' : ''}${won(d, { tri: false })}원) — 호표·내역서가 다시 계산됩니다`);
+  };
   return (
     <Shell
       doc="자재단가"
       toolbar={<>
-        <Group label="자재"><FB icon="material" label="자재" onClick={() => toast('Main에서 자재 불러오기 (데스크톱 판)')} /><FB icon="recalc" label="물가갱신" onClick={() => toast('물가지 최신 호로 갱신 (자료실 연결은 데스크톱 판)')} /></Group>
+        <Group label="자재"><FB icon="new" label="자재 추가" primary onClick={() => setAdding(true)} /><FB icon="recalc" label="물가갱신" title="물가자료가 있는 자재를 모두 최저가로" onClick={refreshAll} /></Group>
         <Group label="적용">
           <FB icon="check" label="최저가 적용" onClick={() => {
             if (!prices.length || !m) { toast('출처 단가가 없는 자재입니다'); return; }
@@ -541,6 +606,8 @@ export function Material() {
           </tbody>
         </table>
       </div>
+      {adding && <FormWin title="자재 추가" onClose={() => setAdding(false)} onOk={addMat}
+        fields={[{ k: 'name', label: '품명' }, { k: 'spec', label: '규격' }, { k: 'unit', label: '단위', w: 80 }, { k: 'price', label: '적용단가 (원)', num: true, w: 140 }]} />}
     </Shell>
   );
 }
@@ -560,6 +627,17 @@ export function Labor() {
     const d = resolveSheet(s.design, b);
     return costSheet({ direct: sectionAmount(d, 'main'), waste: sectionAmount(d, 'waste').t, supplied: sectionAmount(d, 'supplied').t, rates: s.rates }).total;
   }, [s.basis, s.design, s.rates, pick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [adding, setAdding] = useState(false);
+  const addWage = (v: Record<string, string>) => {
+    const k = normName(v.name);
+    if (!k) return '직종 이름을 넣으세요';
+    if (s.basis.wages[k]) return '이미 있는 직종입니다';
+    const old = toNum(v.old), cur = toNum(v.cur);
+    if (!old && !cur) return '노임을 넣으세요';
+    set((st) => ({ ...st, basis: { ...st.basis, wages: { ...st.basis.wages, [k]: { name: v.name.trim(), unit: '인', old: old || cur, cur: cur || null, use: 'old', code: '' } } } }));
+    setAdding(false);
+    toast(`${v.name} 직종을 넣었습니다`);
+  };
   const apply = (use: 'old' | 'cur') => set((st) => ({
     ...st, basis: { ...st.basis, wages: Object.fromEntries(Object.entries(st.basis.wages).map(([k, w]) => [k, pick.has(k) && w.cur ? { ...w, use } : w])) },
   }));
@@ -567,7 +645,7 @@ export function Labor() {
     <Shell
       doc="노임단가"
       toolbar={<>
-        <Group label="노임"><FB icon="labor" label="노임" onClick={() => toast('노임 불러오기 (데스크톱 판)')} /></Group>
+        <Group label="노임"><FB icon="new" label="직종 추가" primary onClick={() => setAdding(true)} /></Group>
         <Group label="갱신">
           <FB icon="recalc" label="일괄갱신" primary onClick={() => { apply('cur'); toast(`${pick.size}개 직종을 2026년 하반기 노임으로 바꿨습니다 — 호표·내역서·원가계산서가 다시 계산됐습니다`); }} />
           <FB icon="undo" label="되돌리기" onClick={() => { apply('old'); toast('공사 작성 당시 노임(2022 상반기)으로 되돌렸습니다'); }} />
@@ -611,6 +689,9 @@ export function Labor() {
           </tbody>
         </table>
       </div>
+      {adding && <FormWin title="노임 — 직종 추가" onClose={() => setAdding(false)} onOk={addWage}
+        hint="적용 노임은 일위대가·단가산출에 쓰는 값이고, 공표 노임을 넣으면 [노임 갱신]으로 바꿀 수 있습니다."
+        fields={[{ k: 'name', label: '직종' }, { k: 'old', label: '적용 노임 (원/인)', num: true, w: 140 }, { k: 'cur', label: '최근 공표 노임 (선택)', num: true, w: 140 }]} />}
     </Shell>
   );
 }
