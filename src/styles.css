@@ -206,3 +206,16 @@ table.f tr.ptop td { border-bottom: 1px dotted #D4D4D4; }
 table.f tr.pbot td { border-bottom: 1px solid #9A9A9A; }
 table.f tr.nsrow td { font-weight: 700; }
 table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
+
+/* 모바일 내역 항목: 1줄 품명·물량·합계금액 / 2줄 단가 */
+.mo-item { padding: 10px 0; border-bottom: 1px solid #ECEEF1; }
+.mo-item:last-child { border-bottom: 0; }
+.mo-i1 { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; }
+.mo-nm small { color: #555C66; font-size: 11px; }
+.mo-q { white-space: nowrap; font-variant-numeric: tabular-nums; color: #2B3038; font-size: 13px; }
+.mo-q small { color: #555C66; }
+.mo-t { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+.mo-i2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; background: #F5F6F8; border-radius: 4px; padding: 5px 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.mo-i2 span { display: flex; flex-direction: column; align-items: flex-end; color: #2B3038; }
+.mo-i2 small { color: #6B7280; font-size: 10px; }
+.mo-i2 .sum { font-weight: 700; color: #1F4E8C; }

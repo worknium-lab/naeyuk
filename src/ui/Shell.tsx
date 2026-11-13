@@ -128,6 +128,7 @@ function WorkTabs({ set }: { set: TabSet }) {
       <nav className="tabs" aria-label="작업화면 이동">
         <NavLink to="/sub" end className={cls}>하도급내역서</NavLink>
         <NavLink to="/sub/compare" className={cls}>원·하도급 대비내역서</NavLink>
+        <NavLink to="/sub/change" className={cls}>하도급 설계변경</NavLink>
         <span className="sp" />
         <NavLink to="/unit" className={cls}>일위대가</NavLink>
         <NavLink to="/calc" className={cls}>단가산출</NavLink>

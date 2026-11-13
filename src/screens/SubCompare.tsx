@@ -13,16 +13,19 @@ export default function SubCompare() {
   const docs = useDocs();
   const [params, setParams] = useSearchParams();
   const id = params.get('id') ?? s.subs[0]?.id;
+  const useChange = params.get('v') === 'change';
   const entry = docs.subs.find((x) => x.sub.id === id) ?? docs.subs[0];
   const [mode, setMode] = useState<'sum' | 'split'>('sum');
   const [onlySub, setOnlySub] = useState(false);
-  const main = start.sections.find((x) => x.section === 'main')!.lines;
+  const base = useChange ? docs.get('change').sheet : start;
+  const main = base.sections.find((x) => x.section === 'main')!.lines;
   const rows = useMemo(() => flatten(main), [main]);
   if (!entry) return <Shell doc="원·하도급 대비내역서" tabs="sub"><div style={{ padding: 20 }}>하도급이 없습니다.</div></Shell>;
-  const { sub, result: r } = entry;
+  const { sub } = entry;
+  const r = useChange ? entry.change : entry.result;
   const tMap = new Map(flatten(r.targetLines).map((x) => [x.line.id, x]));
   const sMap = new Map(flatten(r.subLines).map((x) => [x.line.id, x]));
-  const doDoc = docs.get('start');
+  const doDoc = docs.get(useChange ? 'change' : 'start');
   const totDo = lineAmount(main[0]).t;
   const totT = r.targetLines.reduce((a, l) => a + lineAmount(l).t, 0);
   const totS = r.subLines.reduce((a, l) => a + lineAmount(l).t, 0);
@@ -57,10 +60,11 @@ export default function SubCompare() {
       </>}
       info={<>
         <label><span className="k">하도급</span>
-          <select value={sub.id} onChange={(e) => setParams({ id: e.target.value })}>
+          <select value={sub.id} onChange={(e) => setParams(useChange ? { id: e.target.value, v: 'change' } : { id: e.target.value })}>
             {s.subs.map((x) => <option key={x.id} value={x.id}>{x.vendor} · {x.trade}</option>)}
           </select>
         </label>
+        <div className="vg"><button type="button" className={'vb' + (!useChange ? ' on' : '')} onClick={() => setParams({ id: sub.id })}>당초</button><button type="button" className={'vb' + (useChange ? ' on' : '')} onClick={() => setParams({ id: sub.id, v: 'change' })}>{s.change.name}</button></div>
         <span><span className="k">하도급대상액</span> <b>{won(r.target.total)}</b></span>
         <span><span className="k">하도급액</span> <b>{won(r.sub.total)}</b></span>
         <span><span className="k">하도급율</span> <b>{sub.rate}</b></span>

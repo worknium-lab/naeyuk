@@ -17,13 +17,38 @@ export default function Subcontract() {
   const id = params.get('id') ?? s.subs[0]?.id;
   const entry = docs.subs.find((x) => x.sub.id === id) ?? docs.subs[0];
   const sub = entry?.sub;
-  const [pending, setPending] = useState<Set<string>>(new Set(sub?.pick ?? []));
-  useEffect(() => { setPending(new Set(sub?.pick ?? [])); }, [sub?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const main = start.sections.find((x) => x.section === 'main')!.lines;
   const tree = useMemo(() => flatten(main), [main]);
-  const takenBy = (lid: string) => s.subs.find((x) => x.id !== sub?.id && x.pick.includes(lid));
-  const dirty = sub && (pending.size !== sub.pick.length || sub.pick.some((p) => !pending.has(p)));
+  /** 공종 id는 그 아래 항목 전부로 풀어서, 항목(행) 단위로 고른다 */
+  const expand = (ids: string[]) => {
+    const out = new Set<string>();
+    for (const r of tree) if (!r.line.children && (ids.includes(r.line.id) || r.ancestors.some((a) => ids.includes(a)))) out.add(r.line.id);
+    return out;
+  };
+  const [pending, setPending] = useState<Set<string>>(() => expand(sub?.pick ?? []));
+  const [view, setView] = useState<'pick' | 'doc'>(sub?.pick.length ? 'doc' : 'pick');
+  const [hideOthers, setHideOthers] = useState(false);
+  useEffect(() => { setPending(expand(sub?.pick ?? [])); setView(sub?.pick.length ? 'doc' : 'pick'); }, [sub?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const owner = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of s.subs) if (x.id !== sub?.id) for (const i of expand(x.pick)) m.set(i, x.vendor);
+    return m;
+  }, [s.subs, sub?.id, tree]); // eslint-disable-line react-hooks/exhaustive-deps
+  const committed = expand(sub?.pick ?? []);
+  const dirty = pending.size !== committed.size || [...pending].some((p) => !committed.has(p));
+  const leavesOf = (id: string) => tree.filter((r) => !r.line.children && (r.line.id === id || r.ancestors.includes(id))).map((r) => r.line.id);
+  const toggleRow = (id: string, on: boolean) => setPending((cur) => {
+    const n = new Set(cur);
+    for (const i of leavesOf(id)) if (!owner.has(i)) { if (on) n.add(i); else n.delete(i); }
+    return n;
+  });
+  const pickedAmt = tree.filter((r) => pending.has(r.line.id)).reduce((a, r) => a + r.amount.t, 0);
+  const pickedGroups = [...new Set(tree.filter((r) => pending.has(r.line.id)).map((r) => (r.ancestors[1] ? findLine(main, r.ancestors[1])?.name : r.line.name) ?? ''))].filter(Boolean);
+  const commit = () => {
+    update({ pick: [...pending], trade: pickedGroups.length ? (pickedGroups.length > 2 ? `${pickedGroups.slice(0, 2).join(' · ')} 외 ${pickedGroups.length - 2}` : pickedGroups.join(' · ')) : '공종 선택 전' });
+    setView('doc');
+    toast(`선택한 ${pending.size}행으로 하도급내역서를 만들었습니다`);
+  };
 
   const update = (patch: Partial<Sub>) => sub && set((st) => ({ ...st, subs: st.subs.map((x) => (x.id === sub.id ? { ...x, ...patch } : x)) }));
   const toggleEx = (k: CostKey) => {
@@ -54,12 +79,9 @@ export default function Subcontract() {
       tabs="sub"
       toolbar={<>
         <Group label="하도급 만들기">
-          <FB icon="check" label="공종선택" onClick={() => document.getElementById('pick')?.scrollIntoView()} />
-          <FB icon="rebuild" label="다시 만들기" primary title="선택 공종으로 하도급내역서 다시 만들기" onClick={() => {
-            const names = [...pending].map((p) => findLine(main, p)?.name).filter(Boolean);
-            update({ pick: [...pending], trade: names.length ? names.join(' · ') : '공종 선택 전' });
-            toast('선택한 공종으로 하도급내역서를 다시 만들었습니다');
-          }} />
+          <FB icon="check" label="행 선택" on={view === 'pick'} title="착공내역서 전체에서 하도급할 행 고르기" onClick={() => setView('pick')} />
+          <FB icon="rebuild" label="만들기" primary title="선택한 행으로 하도급내역서 만들기" onClick={commit} />
+          <FB icon="doc" label="하도급내역서" on={view === 'doc'} onClick={() => setView('doc')} />
           <FB icon="pct" label="하도급율" onClick={async () => {
             const v = await ask({ title: '하도급율', label: '하도급율(%)', value: String(+(sub.rate * 100).toFixed(3)) });
             if (v && +v > 0) update({ rate: +v / 100 });
@@ -74,6 +96,7 @@ export default function Subcontract() {
           <FB icon="vendor" label="업체" onClick={async () => { const v = await ask({ title: '하도급 업체', label: '업체명', value: sub.vendor }); if (v) update({ vendor: v }); }} />
           <FB icon="new" label="하도급 추가" onClick={addSub} />
           <FB icon="compare" label="대비내역서" to={`/sub/compare?id=${sub.id}`} />
+          <FB icon="swap" label="설계변경" title="원도급 설계변경 기준 하도급 변경" to={`/sub/change?id=${sub.id}`} />
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
@@ -100,30 +123,19 @@ export default function Subcontract() {
         </ol>
       </>}
       left={
-        <nav className="lp" id="pick" aria-label="하도급 공종 선택" style={{ width: 260 }}>
-          <div className="lp-h">하도급 공종 선택 (착공내역서)</div>
-          {tree.map((fr) => {
-            const l = fr.line;
-            const other = takenBy(l.id);
-            const parentPicked = fr.ancestors.some((a) => pending.has(a));
-            const checked = pending.has(l.id) || parentPicked;
-            if (fr.depth > 1) return null;
-            return (
-              <label key={l.id} className={'it' + (pending.has(l.id) ? ' on' : '')} style={{ paddingLeft: 10 + fr.depth * 16, color: other ? '#9AA1AB' : undefined }}>
-                <input type="checkbox" disabled={!!other || fr.depth === 0} checked={checked}
-                  onChange={(e) => { const n = new Set(pending); e.target.checked ? n.add(l.id) : n.delete(l.id); setPending(n); }} />
-                {l.mark} {l.name}
-                <span className="st" style={{ marginLeft: 'auto' }}>{other ? other.vendor : fr.depth === 1 ? won(fr.amount.t) : ''}</span>
-              </label>
-            );
-          })}
-          <div className="hint" style={{ padding: 10 }}>회색 공종은 다른 업체에 이미 하도급된 공종입니다. 공종을 바꾼 뒤 <b>다시 만들기</b>를 누르세요.</div>
-          {dirty && <div className="note" style={{ margin: '0 10px' }}>선택이 바뀌었습니다 — 아직 내역서에 반영되지 않았습니다.</div>}
-          <button type="button" className="btn pri" style={{ margin: 10 }} onClick={() => {
-            const names = [...pending].map((p) => findLine(main, p)?.name).filter(Boolean);
-            update({ pick: [...pending], trade: names.length ? names.join(' · ') : '공종 선택 전' });
-            toast('선택한 공종으로 하도급내역서를 다시 만들었습니다');
-          }}>선택 공종으로 다시 만들기</button>
+        <nav className="lp" aria-label="선택 요약" style={{ width: 240 }}>
+          <div className="lp-h">선택한 행</div>
+          <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="calc">
+              <div className="r"><span>행</span><b>{pending.size}개</b></div>
+              <div className="r"><span>착공 금액</span><b>{won(pickedAmt, { zero: '0' })}</b></div>
+            </div>
+            {pickedGroups.length > 0 && <div className="hint">{pickedGroups.join(' · ')}</div>}
+            {dirty && <div className="note">선택이 바뀌었습니다 — <b>만들기</b>를 누르면 하도급내역서에 반영됩니다.</div>}
+            <button type="button" className="btn pri" disabled={!pending.size} onClick={commit}>선택한 {pending.size}행으로 만들기</button>
+            <button type="button" className="btn" onClick={() => setView(view === 'pick' ? 'doc' : 'pick')}>{view === 'pick' ? '하도급내역서 보기' : '착공내역서에서 행 고르기'}</button>
+            <div className="hint">회색 행은 다른 업체에 이미 하도급된 행입니다. 공종 줄의 체크는 그 아래 행을 모두 고릅니다.</div>
+          </div>
         </nav>
       }
       right={
@@ -162,8 +174,40 @@ export default function Subcontract() {
       footer={<><span>공종 {sub.pick.length}</span><span>하도급 도급액 {won(sb.total)}</span><span>{sub.confirmed ? '확정' : '작성 중'}</span></>}
       mainClass="main pad"
     >
+      {view === 'pick' ? (<>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>착공내역서 전체 — 하도급할 행 고르기
+          <label style={{ fontWeight: 400, fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={hideOthers} onChange={(e) => setHideOthers(e.target.checked)} />다른 업체 행 숨기기</label>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="vb" onClick={() => setPending(new Set())}>선택 지우기</button>
+        </h2>
+        <table className="f" style={{ width: '100%' }}>
+          <thead><tr><th>선택</th><th>L</th><th>공종</th><th>품    명</th><th>규   격</th><th>수 량</th><th>단위</th><th>단 가</th><th>금   액</th><th>노무비</th><th>재료비</th><th>경 비</th><th>하도급</th></tr></thead>
+          <tbody>
+            {tree.filter((r) => !hideOthers || r.line.children || !owner.has(r.line.id)).map((r) => {
+              const l = r.line;
+              const g = !!l.children;
+              const leaves = g ? leavesOf(l.id) : [l.id];
+              const free = leaves.filter((x) => !owner.has(x));
+              const on = free.length > 0 && free.every((x) => pending.has(x));
+              const some = free.some((x) => pending.has(x));
+              const other = !g ? owner.get(l.id) : undefined;
+              return (
+                <tr key={l.id} className={(g ? 'g ' : '') + (!g && pending.has(l.id) ? 'sel ' : '') + (other ? 'off ' : '') + 'click'} onClick={() => !other && free.length && toggleRow(l.id, !on)}>
+                  <td className="c"><input type="checkbox" disabled={!free.length} checked={on} ref={(el) => { if (el) el.indeterminate = !on && some; }} onChange={(e) => toggleRow(l.id, e.target.checked)} onClick={(e) => e.stopPropagation()} aria-label={l.name} /></td>
+                  <td className="c">{l.level || ''}</td><td className="c">{l.mark}</td>
+                  <td className="nm" style={{ paddingLeft: 6 + r.depth * 12 }}>{l.name}</td><td className="sp">{l.spec}</td>
+                  <td className="n">{g ? '' : qtyFmt(l.qty)}</td><td className="c">{l.unit}</td>
+                  <td className="n">{g ? '' : won(unitTotal(l))}</td><td className="n">{won(r.amount.t)}</td>
+                  <td className="n">{won(r.amount.l)}</td><td className="n">{won(r.amount.m)}</td><td className="n">{won(r.amount.e)}</td>
+                  <td>{other ?? (g && some ? `${free.filter((x) => pending.has(x)).length}/${leaves.length}` : '')}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </>) : (<>
       <h2>하도급 내역서 · 단가 = 착공 단가 × {(sub.rate * 100).toFixed(3)}% (원 미만 버림)</h2>
-      {subRows.length === 0 ? <div className="note">왼쪽에서 하도급 공종을 고르고 <b>다시 만들기</b>를 누르세요.</div> : (
+      {subRows.length === 0 ? <div className="note">[행 선택]에서 착공내역서의 하도급할 행을 고르고 <b>만들기</b>를 누르세요.</div> : (
         <table className="f" style={{ width: '100%' }}>
           <thead>
             <tr><th rowSpan={2}>품 명</th><th rowSpan={2}>규 격</th><th rowSpan={2}>수 량</th><th rowSpan={2}>단위</th><th colSpan={2}>합    계</th><th colSpan={2}>노 무 비</th><th colSpan={2}>재 료 비</th><th colSpan={2}>경    비</th><th rowSpan={2}>착공 단가</th></tr>
@@ -216,6 +260,7 @@ export default function Subcontract() {
           })}
         </tbody>
       </table>
+      </>)}
     </Shell>
   );
 }

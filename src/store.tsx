@@ -18,6 +18,10 @@ export interface Subcontract {
   exclude: CostKey[];
   round: RoundMode;
   confirmed: boolean;
+  /** 설계변경 신규 항목 중 이 하도급에 넣을 것 */
+  pickNew?: string[];
+  /** 하도급 변경 확정 */
+  changeConfirmed?: boolean;
 }
 
 export interface ImportedUnit {

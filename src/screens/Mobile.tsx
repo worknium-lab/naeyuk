@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
-import { won, lineAmount, pct, qtyFmt } from '../engine';
+import { won, lineAmount, pct, qtyFmt, unitTotal } from '../engine';
 
 function Frame({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
   const cls = ({ isActive }: { isActive: boolean }) => (isActive ? 'on' : '');
@@ -69,9 +69,20 @@ export function MobileEstimate() {
             {on && (
               <div style={{ padding: '0 14px 8px' }}>
                 {(g.children ?? []).map((l) => (
-                  <div key={l.id} className="mo-row" style={{ alignItems: 'flex-start' }}>
-                    <div><div>{l.name}</div><small style={{ color: '#555C66' }}>{l.spec} · {qtyFmt(l.qty)} {l.unit}</small></div>
-                    <b style={{ whiteSpace: 'nowrap' }}>{won(lineAmount(l).t)}</b>
+                  <div key={l.id} className="mo-item">
+                    <div className="mo-i1">
+                      <div className="mo-nm"><div>{l.name}</div>{l.spec && <small>{l.spec}</small>}</div>
+                      {!l.children && <span className="mo-q">{qtyFmt(l.qty)} <small>{l.unit}</small></span>}
+                      <b className="mo-t">{won(lineAmount(l).t)}</b>
+                    </div>
+                    {!l.children && (
+                      <div className="mo-i2">
+                        <span><small>재료</small>{won(l.mu, { zero: '0' })}</span>
+                        <span><small>노무</small>{won(l.lu, { zero: '0' })}</span>
+                        <span><small>경비</small>{won(l.eu, { zero: '0' })}</span>
+                        <span className="sum"><small>합계</small>{won(unitTotal(l), { zero: '0' })}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
