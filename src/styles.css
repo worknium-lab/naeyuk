@@ -259,3 +259,6 @@ table.f tr.addbar .k { color: var(--muted); font-size: 12px; margin-right: 6px; 
 .xb { border: 0; background: transparent; color: #8A929E; cursor: pointer; font-size: 13px; padding: 0 3px; line-height: 16px; }
 .xb:hover { color: #C00000; }
 td.ctl { white-space: nowrap; }
+aside.rp { overflow-x: hidden; }
+aside.rp fieldset { min-width: 0; }
+aside.rp fieldset label > select, aside.rp fieldset label > input[type=text] { width: 0; flex: 1 1 auto; min-width: 0; }

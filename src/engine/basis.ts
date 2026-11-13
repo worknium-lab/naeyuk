@@ -10,7 +10,7 @@ import { floor } from './num';
 export interface Wage { name: string; unit: string; old: number; cur: number | null; use: 'old' | 'cur'; code: string }
 export interface Mat { key: string; name: string; spec: string; unit: string; price: number }
 
-export type ULineKind = 'labor' | 'mat' | 'unit' | 'calc' | 'pct' | 'fixed';
+export type ULineKind = 'labor' | 'mat' | 'unit' | 'calc' | 'machine' | 'pct' | 'fixed';
 export interface ULine {
   id: string;
   kind: ULineKind;
@@ -18,7 +18,7 @@ export interface ULine {
   spec: string;
   qty: number;
   unit: string;
-  /** labor: 노임 이름 · mat: 자재 key · unit: 제N호표 · calc: 단산N */
+  /** labor: 노임 이름 · mat: 자재 key · unit: 제N호표 · calc: 단산N · machine: M번호 */
   ref?: string;
   /** pct/fixed가 들어갈 비목 */
   col?: 'l' | 'm' | 'e';
@@ -242,6 +242,11 @@ export function computeUnits(b: Basis): Map<string, UnitCalc> {
         const p = c ? calcPrice(b, c) : { l: 0, m: 0, e: 0 };
         price = p.l + p.m + p.e;
         l = ln.qty * p.l; m = ln.qty * p.m; e = ln.qty * p.e;
+      } else if (ln.kind === 'machine') {
+        const md = b.machines?.find((x) => x.no === ln.ref);
+        const p = md ? machinePrice(b, md).total : { l: 0, m: 0, e: 0 };
+        price = p.l + p.m + p.e;
+        l = ln.qty * p.l; m = ln.qty * p.m; e = ln.qty * p.e;
       } else if (ln.kind === 'pct') {
         price = sl; // 노무비의 %
         const v = (sl * ln.qty) / 100;
@@ -291,7 +296,8 @@ export function resolveSheet(sheet: Sheet, b: Basis, units = computeUnits(b)): S
 /** 이 근거를 쓰는 곳 (호표 → 상위 호표, 내역 줄) */
 export function usages(b: Basis, sheet: Sheet, ref: string): string[] {
   const out: string[] = [];
-  for (const u of b.units) if (u.lines.some((x) => x.ref === ref)) out.push(u.no);
+  for (const u of b.units) if (u.lines.some((x) => x.ref === ref || (x.kind === 'labor' && normName(x.ref ?? x.name) === ref))) out.push(u.no);
+  for (const c of b.calcs) if (c.lines?.some((x) => x.k === 'mach' && x.machine === ref)) out.push(c.no);
   for (const c of b.calcs) if (c.lines?.some((x) => (x.k === 'mat' && x.mat === ref) || (x.k === 'labor' && normName(x.wage) === ref))) out.push(c.no);
   const walk = (ls: Line[]) => ls.forEach((l) => { if (l.ref === ref) out.push(`내역 · ${l.name}`); if (l.children) walk(l.children); });
   sheet.sections.forEach((s) => walk(s.lines));

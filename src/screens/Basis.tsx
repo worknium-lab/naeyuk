@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { canPrint, useAsk } from '../ui/Ask';
 import { useStore } from '../store';
-import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, calcEval, mapSheet, machinePrice, quotePrice, type MachineDef, type QuoteDef, type CalcDef, type CalcLine, type Line } from '../engine';
+import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, calcEval, mapSheet, machinePrice, quotePrice, type MachineDef, type QuoteDef, type CalcDef, type CalcLine, type Line, type ULine, type ULineKind, type UnitDef } from '../engine';
 import { basisData } from '../data/basisData';
 import { useDocs } from '../docs';
 import calcRows from '../data/calc.rows.json';
@@ -37,7 +37,7 @@ const Tg = ({ open, onClick, label }: { open: boolean; onClick: () => void; labe
 );
 
 /* ---------- 일위대가 ---------- */
-const KIND_LABEL: Record<string, string> = { labor: '노임', mat: '자재', unit: '일위', calc: '단산', pct: '%', fixed: '고정' };
+const KIND_LABEL: Record<string, string> = { labor: '노임', mat: '자재', unit: '일위', calc: '단산', machine: '장비', pct: '%', fixed: '고정' };
 
 export function UnitCost() {
   const { s, set, units, design, toast } = useStore();
@@ -57,13 +57,36 @@ export function UnitCost() {
   const delLine = (no: string, id: string) => set((st) => ({
     ...st, basis: { ...st.basis, units: st.basis.units.map((u) => (u.no === no ? { ...u, lines: u.lines.filter((l) => l.id !== id) } : u)) },
   }));
-  const addLine = (kind: 'labor' | 'mat', ref: string) => {
+  const updUnit = (no: string, patch: Partial<UnitDef>) => set((st) => ({ ...st, basis: { ...st.basis, units: st.basis.units.map((u) => (u.no === no ? { ...u, ...patch } : u)) } }));
+  const updLine = (no: string, id: string, patch: Partial<ULine>) => set((st) => ({
+    ...st, basis: { ...st.basis, units: st.basis.units.map((u) => (u.no === no ? { ...u, lines: u.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) } : u)) },
+  }));
+  const upLine = (no: string, id: string) => set((st) => ({
+    ...st, basis: { ...st.basis, units: st.basis.units.map((u) => { if (u.no !== no) return u; const i = u.lines.findIndex((l) => l.id === id); if (i < 1) return u; const ls = [...u.lines]; [ls[i - 1], ls[i]] = [ls[i], ls[i - 1]]; return { ...u, lines: ls }; }) },
+  }));
+  const addLine = (kind: ULineKind, ref = '') => {
     if (!cur) return;
-    const name = kind === 'labor' ? s.basis.wages[ref]?.name : s.basis.mats[ref]?.name;
-    const spec = kind === 'mat' ? s.basis.mats[ref]?.spec ?? '' : '';
-    const unit = kind === 'labor' ? '인' : s.basis.mats[ref]?.unit ?? '';
-    set((st) => ({ ...st, basis: { ...st.basis, units: st.basis.units.map((u) => (u.no === sel ? { ...u, lines: [...u.lines, { id: `${sel}-${Date.now()}`, kind, ref, name: name ?? ref, spec, unit, qty: 0 }] } : u)) } }));
-    toast(`${name}을(를) ${sel}에 넣었습니다 — 수량을 넣으세요`);
+    let ln: Partial<ULine> = {};
+    if (kind === 'labor') ln = { name: s.basis.wages[ref]?.name ?? ref, spec: '', unit: '인', ref: s.basis.wages[ref]?.name ?? ref };
+    else if (kind === 'mat') { const m = s.basis.mats[ref]; ln = { name: m?.name ?? ref, spec: m?.spec ?? '', unit: m?.unit ?? '', ref }; }
+    else if (kind === 'calc') { const c = s.basis.calcs.find((x) => x.no === ref); ln = { name: c?.name ?? ref, spec: '', unit: c?.unit ?? '', ref }; }
+    else if (kind === 'unit') { const u = s.basis.units.find((x) => x.no === ref); ln = { name: u?.name ?? ref, spec: u?.spec ?? '', unit: u?.unit ?? '', ref }; }
+    else if (kind === 'machine') { const m = (s.basis.machines ?? []).find((x) => x.no === ref); ln = { name: m?.name ?? ref, spec: m?.spec ?? '', unit: 'hr', ref }; }
+    else if (kind === 'pct') ln = { name: '공구손료', spec: '노무비의', unit: '%', col: 'm', qty: 3 };
+    else ln = { name: '직접 금액', spec: '', unit: '식', col: 'e', amt: 0, qty: 1 };
+    set((st) => ({ ...st, basis: { ...st.basis, units: st.basis.units.map((u) => (u.no === sel ? { ...u, lines: [...u.lines, { id: `${sel}-${Date.now()}`, kind, qty: 0, ...ln } as ULine] } : u)) } }));
+    if (!fold.isOpen(sel)) fold.toggle(sel);
+    toast(`${ln.name}을(를) ${sel}에 넣었습니다 — 노란 칸에 수량을 넣으세요`);
+  };
+  const putToSheet = () => {
+    if (!cur) return;
+    const main = s.design.sections.find((x) => x.section === 'main');
+    const root = main?.lines[0];
+    const g = root?.children?.filter((x) => x.children).at(-1) ?? root;
+    if (!g) return;
+    const item: Line = { id: 'U' + Date.now().toString(36), level: 0, mark: '', name: cur.def.name, spec: cur.def.spec, unit: cur.def.unit, qty: 1, lu: 0, mu: 0, eu: 0, ref: sel, link: true };
+    set((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === g.id ? { ...l, children: [...(l.children ?? []), item] } : l)) }));
+    toast(`설계내역서 [${g.name}] 끝에 ${cur.def.name}(${sel} 연결)을 넣었습니다 — 내역서에서 수량을 고치세요`);
   };
   const newUnit = () => {
     const n = Math.max(0, ...s.basis.units.map((u) => Number(u.no.replace(/\D/g, '')) || 0)) + 1;
@@ -105,6 +128,12 @@ export function UnitCost() {
             <div className="r"><span>합계 / {cur.def.unit}</span><b>{won(cur.total.l + cur.total.m + cur.total.e)}</b></div>
           </div>
           <div><b style={{ fontSize: 12.5 }}>사용처</b><div className="hint">{used.length ? used.join(' · ') : '없음'}</div></div>
+          <fieldset><legend>호표</legend>
+            <label style={{ alignItems: 'center' }}>품명 <input type="text" style={{ flex: 1, minWidth: 0 }} key={sel + 'n'} defaultValue={cur.def.name} onBlur={(e) => e.target.value !== cur.def.name && updUnit(sel, { name: e.target.value })} /></label>
+            <label style={{ alignItems: 'center' }}>규격 <input type="text" style={{ flex: 1, minWidth: 0 }} key={sel + 's'} defaultValue={cur.def.spec} onBlur={(e) => e.target.value !== cur.def.spec && updUnit(sel, { spec: e.target.value })} /></label>
+            <label style={{ alignItems: 'center' }}>단위 <input type="text" style={{ width: 70 }} key={sel + 'u'} defaultValue={cur.def.unit} onBlur={(e) => e.target.value !== cur.def.unit && updUnit(sel, { unit: e.target.value })} /></label>
+            <button type="button" className="btn" onClick={putToSheet}>설계내역서에 넣기</button>
+          </fieldset>
           <fieldset><legend>줄 넣기</legend>
             <label style={{ alignItems: "center" }}>노임 <select style={{ flex: 1, minWidth: 0 }} defaultValue="" onChange={(e) => { if (e.target.value) addLine('labor', e.target.value); e.target.value = ''; }}>
               <option value="">— 고르기 —</option>
@@ -114,6 +143,22 @@ export function UnitCost() {
               <option value="">— 고르기 —</option>
               {Object.values(s.basis.mats).map((m) => <option key={m.key} value={m.key}>{m.name} {m.spec} ({won(m.price)})</option>)}
             </select></label>
+            <label style={{ alignItems: "center" }}>장비 <select style={{ flex: 1, minWidth: 0 }} defaultValue="" onChange={(e) => { if (e.target.value) addLine('machine', e.target.value); e.target.value = ''; }}>
+              <option value="">— 기계경비 (시간당) —</option>
+              {(s.basis.machines ?? []).map((m) => { const t = machinePrice(s.basis, m).total; return <option key={m.no} value={m.no}>{m.no.replace('M', '기계')} {m.name} {m.spec} ({won(t.l + t.m + t.e)})</option>; })}
+            </select></label>
+            <label style={{ alignItems: "center" }}>단산 <select style={{ flex: 1, minWidth: 0 }} defaultValue="" onChange={(e) => { if (e.target.value) addLine('calc', e.target.value); e.target.value = ''; }}>
+              <option value="">— 단가산출 —</option>
+              {s.basis.calcs.map((c) => { const p = calcPrice(s.basis, c); return <option key={c.no} value={c.no}>{c.no} {c.name} ({won(p.l + p.m + p.e)}/{c.unit})</option>; })}
+            </select></label>
+            <label style={{ alignItems: "center" }}>호표 <select style={{ flex: 1, minWidth: 0 }} defaultValue="" onChange={(e) => { if (e.target.value) addLine('unit', e.target.value); e.target.value = ''; }}>
+              <option value="">— 다른 호표 —</option>
+              {s.basis.units.filter((u) => u.no !== sel).map((u) => { const t = units.get(u.no)?.total; return <option key={u.no} value={u.no}>{u.no} {u.name} {u.spec}{t ? ` (${won(t.l + t.m + t.e)})` : ''}</option>; })}
+            </select></label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => addLine('pct')}>노무비 % 줄</button>
+              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => addLine('fixed')}>직접 금액 줄</button>
+            </div>
           </fieldset>
           {cur.def.from && <div className="note">출처: {cur.def.from}</div>}
         </aside>
@@ -146,15 +191,17 @@ export function UnitCost() {
                       <tr key={ln.id}>
                         <td /><td />
                         <td style={{ paddingLeft: 20 }}>{ln.name}</td><td>{ln.spec}</td>
-                        <td className="n">{ln.kind === 'fixed' ? '1' : <input className="q" style={{ width: 64 }} value={ln.qty} onChange={(e) => setQty(def.no, ln.id, Number(e.target.value) || 0)} />}</td>
+                        <td className="n">{ln.kind === 'fixed' ? <input className="q" style={{ width: 84 }} title="금액" value={ln.amt ?? 0} onChange={(e) => updLine(def.no, ln.id, { amt: Number(e.target.value) || 0 })} /> : <input className="q" style={{ width: 64 }} value={ln.qty} onChange={(e) => setQty(def.no, ln.id, Number(e.target.value) || 0)} />}</td>
                         <td className="c">{ln.unit}</td>
                         <td className="c">{ln.kind === 'unit' || ln.kind === 'calc'
                           ? <a className="lk" href="#" onClick={(e) => { e.preventDefault(); if (ln.kind === 'unit' && ln.ref) { setSel(ln.ref); if (!fold.isOpen(ln.ref)) fold.toggle(ln.ref); setTimeout(() => document.getElementById('u-' + ln.ref)?.scrollIntoView({ block: 'center' }), 30); } }}>{ln.ref}</a>
-                          : KIND_LABEL[ln.kind]}</td>
+                          : ln.kind === 'pct' || ln.kind === 'fixed'
+                            ? <select className="qs" value={ln.col ?? 'e'} onChange={(e) => updLine(def.no, ln.id, { col: e.target.value as 'l' | 'm' | 'e' })}><option value="l">노무</option><option value="m">재료</option><option value="e">경비</option></select>
+                            : ln.kind === 'machine' ? <a className="lk" href="#/machine">{(ln.ref ?? '').replace('M', '기계')}</a> : KIND_LABEL[ln.kind]}</td>
                         <td className="n">{ln.kind === 'pct' ? `${f1(lc.price)}의` : won(lc.price)}</td>
                         <td className="n">{f1(sum)}</td><td className="n">{f1(lc.l)}</td><td className="n">{f1(lc.m)}</td><td className="n">{f1(lc.e)}</td>
                         <td>{ln.note ?? ''}</td>
-                        <td className="c"><button type="button" className="tg" title="줄 지우기" onClick={() => delLine(def.no, ln.id)}>×</button></td>
+                        <td className="c ctl"><button type="button" className="xb" title="위로" onClick={() => upLine(def.no, ln.id)}>↑</button><button type="button" className="xb" title="줄 지우기" onClick={() => delLine(def.no, ln.id)}>×</button></td>
                       </tr>
                     );
                   })}
@@ -196,6 +243,14 @@ export function Calc() {
     if (!pick) { toast('먼저 줄을 넣을 단가산출(또는 그 안의 줄)을 누르세요'); return; }
     const { no, i } = pick;
     const at = i < 0 ? (calcs.find((c) => c.no === no)?.lines?.length ?? 0) : i + 1;
+    const c0 = calcs.find((c) => c.no === no);
+    if (c0 && !c0.own && !c0.lines?.length) {
+      // 산출근거 없이 값만 있던 단산 → 지금부터 산출근거로 계산
+      set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.map((x) => (x.no === no ? { ...x, own: true, l: 0, m: 0, e: 0, lines: [{ ...ln, added: true } as CalcLine] } : x)) } }));
+      toast(`${no}는 이제 산출근거로 계산합니다 (직접 입력값 ${won(c0.l + c0.m + c0.e)}원 대신)`);
+      setPick({ no, i: 0 }); if (!fold.isOpen(no)) fold.toggle(no);
+      return;
+    }
     mutLines(no, (ls) => [...ls.slice(0, at), { ...ln, added: true } as CalcLine, ...ls.slice(at)]);
     setPick({ no, i: at });
     if (!fold.isOpen(no)) fold.toggle(no);
@@ -305,7 +360,7 @@ export function Calc() {
                 <Fragment key={c.no}>
                   <tr className={'g click' + (pick?.no === c.no && pick.i < 0 ? ' sel' : '')} onClick={() => setPick({ no: c.no, i: -1 })}>
                     <td className="c">{ev && <Tg open={isOpen} onClick={() => fold.toggle(c.no)} label={c.name} />}</td>
-                    <td>{n}.{c.name} [{c.unit}]{c.own && <span className="cf"> · 새로 작성</span>}{!c.own && !rawGroups.includes(c.no) && <span className="cf"> · 다른 내역서에서 가져옴</span>}{!ev && rawGroups.includes(c.no) && <span className="cf"> · 산출근거 없음 (값 직접 입력)</span>}</td>
+                    <td>{n}.{c.name} [{c.unit}]{c.own && <span className="cf"> · 새로 작성</span>}{!c.own && !rawGroups.includes(c.no) && <span className="cf"> · 다른 내역서에서 가져옴</span>}{!ev && rawGroups.includes(c.no) && <span className="cf"> · 산출근거 없음 (값 직접 입력 — 이 줄을 누르고 [줄 추가]로 산출근거를 쓰면 계산으로 바뀝니다)</span>}</td>
                     <td className="n" id={c.no}>{won(t)}{!c.own && t !== t0 && <div className="cf">당초 {won(t0)} · {t - t0 > 0 ? '+' : ''}{won(t - t0, { tri: false })}</div>}</td>
                     {(['l', 'm', 'e'] as const).map((f) => <td key={f} className="n">{ev ? <>{won(p[f])}{!c.own && p[f] !== c[f] && <div className="cf">당초 {won(c[f])}</div>}</> : <input className="q" style={{ width: 84 }} value={c[f]} onChange={(e) => setCalc(c.no, { [f]: Number(e.target.value) || 0 })} />}</td>)}
                     <td className="c" /><td><span className="lk">{c.no}</span>{c.own && <button type="button" className="vb mini" style={{ marginLeft: 4 }} title="이 단산을 단가로 쓰는 항목을 설계내역서에 넣기" onClick={() => putToSheet(c)}>내역서에 넣기</button>}{c.own && <button type="button" className="xb" title="이 단산 지우기" onClick={() => delCalc(c)}>×</button>}</td>
