@@ -244,3 +244,9 @@ table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
 .menu > div > button.rt.sel { background: #F7F8FA; border-color: var(--line2); color: var(--accent); font-weight: 700; position: relative; top: 1px; }
 .menu { border-bottom: 1px solid var(--line2); }
 .rb-empty { align-self: center; color: var(--muted); padding: 0 10px; font-size: 12px; }
+
+/* 단가산출 — 고칠 수 있는 칸 */
+table.f input.qi { height: 18px; border: 1px solid #D8C98A; background: #FFFDF0; font: inherit; text-align: right; padding: 0 3px; }
+table.f input.qi:focus { outline: 2px solid #9DB4D6; border-color: #9DB4D6; }
+a.pl { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+.qf > div { line-height: 24px; }

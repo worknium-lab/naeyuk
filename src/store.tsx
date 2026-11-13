@@ -109,9 +109,10 @@ export function migrate(st: State): State {
       machines: b.machines ?? fresh.machines,
       fuel: b.fuel ?? fresh.fuel,
       quotes: b.quotes ?? fresh.quotes,
+      mats: { ...fresh.mats, ...b.mats },
       calcs: b.calcs.map((c) => {
         const f = fresh.calcs.find((x) => x.no === c.no);
-        return f ? { ...c, laborLines: c.laborLines ?? f.laborLines, pctOfLabor: c.pctOfLabor ?? f.pctOfLabor, machineLines: c.machineLines ?? f.machineLines } : c;
+        return f ? { ...c, laborLines: c.laborLines ?? f.laborLines, pctOfLabor: c.pctOfLabor ?? f.pctOfLabor, machineLines: c.machineLines ?? f.machineLines, lines: c.lines ?? f.lines } : c;
       }),
     },
   };

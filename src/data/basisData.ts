@@ -2,7 +2,7 @@ import unitRows from './unitcost.rows.json';
 import calcRows from './calc.rows.json';
 import machineRows from './machine.rows.json';
 import tables from './tables.json';
-import { parseNum, normName, type Basis, type ULine, type UnitDef, type Wage, type Mat, type MachineDef } from '../engine';
+import { parseNum, normName, type Basis, type ULine, type UnitDef, type Wage, type Mat, type MachineDef, type CalcLine } from '../engine';
 
 type R = string[];
 
@@ -78,7 +78,8 @@ export function basisData(): Basis {
       for (const op of mm[3].match(/[×÷][\d.]+/g) ?? []) mult = op[0] === '×' ? mult * Number(op.slice(1)) : mult / Number(op.slice(1));
       machineLines.push({ machine: mach, col: mm[1] === '노무비' ? 'l' : mm[1] === '재료비' ? 'm' : 'e', mult, base: parseNum(mm[2]) });
     }
-    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]), laborLines, pctOfLabor, machineLines };
+    const lines = calcLines(crow.filter((y) => y[1] === r[1] && y[0] !== 'grp'), W, mats);
+    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]), laborLines, pctOfLabor, machineLines, lines };
   });
   // 기계경비 (시간당)
   const machines: MachineDef[] = [];
@@ -106,4 +107,60 @@ export function basisData(): Basis {
       vendors: [{ name: '○○중기', price: 1_700_000, date: '2022.08' }, { name: '△△장비', price: 1_850_000, date: '2022.08' }, { name: '□□렌탈', price: 1_780_000, date: '2022.08' }] },
   ];
   return { wages: W, mats, units, calcs, machines, fuel: { 경유: 1_832, 휘발유: 1_762 }, quotes };
+}
+
+/** 단산 산출근거 글줄을 계산할 수 있는 줄로 읽는다 */
+function calcLines(rs: R[], W: Record<string, Wage>, mats: Record<string, Mat>): CalcLine[] {
+  const out: CalcLine[] = [];
+  const indOf = (x: R) => (x[3] === 'i1' ? 1 : x[3] === 'i2' ? 2 : x[3] === 'i3' ? 3 : 0);
+  const num = (x: string) => Number(x.replace(/,/g, ''));
+  let mach: string | null = null;
+  let qp: { q?: number; K?: number; f?: number; E?: number; Cm?: number } | null = null;
+  for (const x of rs) {
+    const t = x[4].trim();
+    const ind = indOf(x);
+    const ref = x[10] || undefined;
+    const mr = (x[10] ?? '').match(/기계(\d+)참조/);
+    if (mr) mach = `M${mr[1]}`;
+    // 작업량 Q 식: 변수 줄을 모았다가 "Q = … = 6.63 ㎥/hr" 줄에서 한 줄로
+    const vars = [...t.matchAll(/\b(q|K|E|Cm|f)\s*=\s*(?:[\d.]+\s*\/\s*[\d.]+\s*=\s*)?([\d.]+)/g)];
+    if (vars.length && !t.startsWith('Q')) { qp = { ...(qp ?? {}) }; for (const v of vars) (qp as Record<string, number>)[v[1]] = Number(v[2]); continue; }
+    if (qp && /^[\d\s,.×]+$|^\s*\d/.test(t) && !t.includes(':')) continue;
+    const qm = t.match(/^Q\s*=.*=\s*([\d.]+)\s*(\S+)$/);
+    if (qp && qm) { out.push({ k: 'q', q: qp.q ?? 0, K: qp.K ?? 1, f: qp.f ?? 1, E: qp.E ?? 1, Cm: qp.Cm ?? 1, unit: qm[2], base: Number(qm[1]), ind }); qp = null; continue; }
+    if (qp && (t.includes('─') || /^Cm\s/.test(t))) continue;
+    if (x[0] === 'sub') { out.push({ k: 'sub', label: t.split(':')[0].trim(), cols: {}, final: true, ind }); continue; }
+    let m = t.match(/^(.+?)\s*:\s*[\d,]+\s*×\s*([\d.]+)\s*인(?:\s*÷\s*([\d.]+)\s*(\S+))?\s*=\s*([\d,.]+)$/);
+    if (m && W[normName(m[1])]) { out.push({ k: 'labor', wage: m[1].trim(), n: Number(m[2]), div: m[3] ? Number(m[3]) : undefined, per: m[4], base: num(m[5]), ind, ref }); continue; }
+    m = t.match(/^(.+?)\s*\((.*)\)\s+([\d,]+)\s*×\s*(.+?)\s*=\s*([\d,.]+)$/);
+    if (m && ref?.startsWith('자재')) {
+      const name = m[1].trim(), spec = m[2].trim();
+      const f = m[4].split('×').map((y) => { const z = y.trim().match(/^([\d.]+)\s*(.*)$/); return { v: z ? Number(z[1]) : 1, u: z?.[2] || undefined }; });
+      const key = matKey(name, spec);
+      if (!mats[key]) mats[key] = { key, name, spec, unit: f.find((y) => y.u)?.u?.split('/')[0] ?? '', price: num(m[3]) };
+      out.push({ k: 'mat', mat: key, name, spec, f, base: num(m[5]), ind, ref });
+      continue;
+    }
+    m = t.match(/^(노무비|재료비|경\s*비)\s*:\s*([\d,]+)\s*((?:[×÷]\s*[\d.]+\s*[^×÷=\d\s]*\s*)+)=\s*([\d,.]+)$/);
+    if (m && mach) {
+      const col = m[1].startsWith('노') ? 'l' : m[1].startsWith('재') ? 'm' : 'e';
+      const lastQ = [...out].reverse().find((y) => y.k === 'q') as Extract<CalcLine, { k: 'q' }> | undefined;
+      const ops = [...m[3].matchAll(/([×÷])\s*([\d.]+)\s*([^×÷=\d\s]*)/g)].map((o) => ({
+        op: o[1] as '×' | '÷', v: (lastQ && o[1] === '÷' && Number(o[2]) === lastQ.base ? 'Q' : Number(o[2])) as number | 'Q', u: o[3] || undefined,
+      }));
+      out.push({ k: 'mach', machine: mach, col, ops, base: num(m[4]), ind, ref });
+      continue;
+    }
+    m = t.match(/^[\d,.]+\s*×\s*([\d.]+)\s*%\s*=\s*([\d,.]+)$/);
+    if (m) { out.push({ k: 'pct', pct: Number(m[1]), col: x[9] === '재' ? 'm' : 'e', base: num(m[2]), ind }); continue; }
+    m = t.match(/^(.+?)\s*:\s*([\d,.]+)$/);
+    if (m && (x[6] || x[7] || x[8])) {
+      const cols: Partial<Record<'l' | 'm' | 'e', number>> = {};
+      if (x[6]) cols.l = num(x[6]); if (x[7]) cols.m = num(x[7]); if (x[8]) cols.e = num(x[8]);
+      out.push({ k: 'sub', label: m[1].trim(), cols, tag: x[9] || undefined, ind });
+      continue;
+    }
+    out.push({ k: 'text', text: t, ind, bold: !!x[2], ref });
+  }
+  return out;
 }

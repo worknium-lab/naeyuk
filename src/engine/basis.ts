@@ -37,10 +37,90 @@ export interface CalcDef {
   pctOfLabor?: { col: 'm' | 'e'; pct: number };
   /** 산출근거의 장비 줄 — 시간당 기계경비 × 배수 */
   machineLines?: { machine: string; col: 'l' | 'm' | 'e'; mult: number; base: number }[];
+  /** 산출근거를 줄 단위로 구조화한 것 — 있으면 이것으로 계산한다 */
+  lines?: CalcLine[];
+}
+
+type Col = 'l' | 'm' | 'e';
+/** 단가산출 산출근거 한 줄 */
+export type CalcLine =
+  | { k: 'text'; text: string; ind: number; bold?: boolean; ref?: string }
+  /** 노임 × 인 (÷ 기준수량) */
+  | { k: 'labor'; wage: string; n: number; div?: number; per?: string; base: number; ind: number; ref?: string }
+  /** 자재단가 × 수량 × 할증 … */
+  | { k: 'mat'; mat: string; name: string; spec: string; f: { v: number; u?: string }[]; base: number; ind: number; ref?: string }
+  /** 기계경비(시간당) ×/÷ … — v 가 'Q' 이면 같은 산출의 작업량 Q */
+  | { k: 'mach'; machine: string; col: Col; ops: { op: '×' | '÷'; v: number | 'Q'; u?: string }[]; base: number; ind: number; ref?: string }
+  /** 작업량 Q = 3,600 × q × K × f × E ÷ Cm */
+  | { k: 'q'; q: number; K: number; f: number; E: number; Cm: number; unit: string; base: number; ind: number }
+  /** 앞 노무비 소계의 % */
+  | { k: 'pct'; pct: number; col: Col; base: number; ind: number }
+  /** 소계 · 계 — cols 는 산출 당시 값 */
+  | { k: 'sub'; label: string; cols: Partial<Record<Col, number>>; tag?: string; final?: boolean; ind: number };
+
+export interface CalcEvalRow { line: CalcLine; now: number; price?: number; cols?: Partial<Record<Col, number>> }
+const r2 = (x: number) => Math.round(x * 100) / 100;
+export const qOf = (x: { q: number; K: number; f: number; E: number; Cm: number }) => r2((3600 * x.q * x.K * x.f * x.E) / (x.Cm || 1));
+
+/** 산출근거를 지금 노임·자재·기계경비로 다시 계산 */
+export function calcEval(b: Basis, c: CalcDef): { rows: CalcEvalRow[]; price: Price } {
+  const wages = new Map(Object.values(b.wages).map((w) => [normName(w.name), w]));
+  const rows: CalcEvalRow[] = [];
+  const delta: Record<Col, number> = { l: 0, m: 0, e: 0 };
+  const then: Record<Col, number> = { l: 0, m: 0, e: 0 };
+  let seg: Record<Col, number> = { l: 0, m: 0, e: 0 };
+  let lastLabor = 0;
+  let Q = 0;
+  const add = (col: Col, now: number, base: number) => { delta[col] += now - base; seg[col] += now - base; then[col] += base; };
+  for (const ln of c.lines ?? []) {
+    switch (ln.k) {
+      case 'labor': {
+        const w = wages.get(normName(ln.wage));
+        const price = w ? wageOf(w) : 0;
+        const now = r1((price * ln.n) / (ln.div || 1));
+        add('l', now, ln.base); rows.push({ line: ln, now, price }); break;
+      }
+      case 'mat': {
+        const price = b.mats[ln.mat]?.price ?? 0;
+        const now = r1(ln.f.reduce((a, x) => a * x.v, price));
+        add('m', now, ln.base); rows.push({ line: ln, now, price }); break;
+      }
+      case 'mach': {
+        const md = b.machines?.find((x) => x.no === ln.machine);
+        const price = md ? machinePrice(b, md).total[ln.col] : 0;
+        let v = price;
+        for (const o of ln.ops) { const n = o.v === 'Q' ? Q : o.v; v = o.op === '×' ? v * n : n ? v / n : 0; }
+        const now = r1(v);
+        add(ln.col, now, ln.base); rows.push({ line: ln, now, price }); break;
+      }
+      case 'q': Q = qOf(ln); rows.push({ line: ln, now: Q }); break;
+      case 'pct': {
+        const now = r1((lastLabor * ln.pct) / 100);
+        add(ln.col, now, ln.base); rows.push({ line: ln, now, price: lastLabor }); break;
+      }
+      case 'sub': {
+        if (ln.final) { rows.push({ line: ln, now: 0 }); break; }
+        const cols: Partial<Record<Col, number>> = {};
+        let t = 0;
+        for (const k of ['l', 'm', 'e'] as Col[]) if (ln.cols[k] !== undefined) { cols[k] = r1(ln.cols[k]! + seg[k]); t += cols[k]!; }
+        if (cols.l !== undefined) lastLabor = cols.l;
+        rows.push({ line: ln, now: r1(t), cols });
+        seg = { l: 0, m: 0, e: 0 };
+        break;
+      }
+      default: rows.push({ line: ln, now: 0 });
+    }
+  }
+  // 산출근거가 모두 들어 있으면 원 미만 버리기 전 합계에서, 일부만 있으면 저장된 값에 차이를 더한다
+  const col = (k: Col) => floor((Math.floor(then[k]) === c[k] && then[k] ? then[k] : c[k]) + delta[k] + 1e-6);
+  const price = { l: col('l'), m: col('m'), e: col('e') };
+  for (const r of rows) if (r.line.k === 'sub' && r.line.final) { r.cols = { l: price.l || undefined, m: price.m || undefined, e: price.e || undefined }; r.now = price.l + price.m + price.e; }
+  return { rows, price };
 }
 
 /** 단가산출 값 — 연결된 노임 줄·장비 줄이 바뀌면 그 차이를 더한다 */
 export function calcPrice(b: Basis, c: CalcDef): Price {
+  if (c.lines?.length) return calcEval(b, c).price;
   if (!c.laborLines?.length && !c.machineLines?.length) return { l: c.l, m: c.m, e: c.e };
   const wages = new Map(Object.values(b.wages).map((w) => [normName(w.name), w]));
   let dl = 0, dm = 0, de = 0;
@@ -210,6 +290,7 @@ export function resolveSheet(sheet: Sheet, b: Basis, units = computeUnits(b)): S
 export function usages(b: Basis, sheet: Sheet, ref: string): string[] {
   const out: string[] = [];
   for (const u of b.units) if (u.lines.some((x) => x.ref === ref)) out.push(u.no);
+  for (const c of b.calcs) if (c.lines?.some((x) => (x.k === 'mat' && x.mat === ref) || (x.k === 'labor' && normName(x.wage) === ref))) out.push(c.no);
   const walk = (ls: Line[]) => ls.forEach((l) => { if (l.ref === ref) out.push(`내역 · ${l.name}`); if (l.children) walk(l.children); });
   sheet.sections.forEach((s) => walk(s.lines));
   return out;
