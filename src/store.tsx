@@ -6,6 +6,7 @@ import {
 import { designSheet, PROJECT } from './data/project';
 import { basisData } from './data/basisData';
 import { remoteStore, type Remote } from './platform';
+import { DEFAULT_FMT, type ChangeFmt } from './changeForms';
 import { useRef } from 'react';
 
 export interface Subcontract {
@@ -44,6 +45,7 @@ export interface State {
   rates: Partial<CostRates>;
   basis: Basis;
   change: ChangeOrder;
+  changeFmt: ChangeFmt;
 }
 
 const KEY = 'naeyuk.v2';
@@ -87,6 +89,7 @@ function initial(): State {
     rates: {},
     basis,
     change: { name: '변경 1회', qty: { L24: 760, L27: 92, L31: 28 }, added: [] },
+    changeFmt: DEFAULT_FMT,
   };
 }
 

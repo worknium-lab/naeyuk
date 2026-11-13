@@ -1,4 +1,6 @@
+/* 시스템이 다크 모드여도 양식은 밝게 — 버튼·선택상자 글자가 하얗게 사라지지 않도록 */
 :root {
+  color-scheme: light;
   --accent: #1F4E8C;
   --line: #C9CED6;
   --line2: #D5D9DF;
@@ -15,6 +17,9 @@ a { color: var(--accent); }
 a:hover { color: #163A69; }
 button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button { font: inherit; }
+button, select, input, textarea, option { color: var(--ink); }
+select, option, input, textarea { background-color: #fff; }
+.vb { color: var(--ink); }
 
 /* 앱 틀 */
 .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -48,7 +53,7 @@ button { font: inherit; }
 .vg .vb + .vb { border-left: 0; }
 .vg .vb:first-child { border-radius: 3px 0 0 3px; }
 .vg .vb:last-child { border-radius: 0 3px 3px 0; }
-.vb.on { background: var(--sel); font-weight: 700; }
+.vb.on { background: var(--accent); color: #fff; font-weight: 700; border-color: var(--accent); }
 
 .body { display: flex; flex: 1; min-height: 0; background: #fff; }
 .main { flex: 1; min-width: 0; overflow: auto; position: relative; }
@@ -195,3 +200,9 @@ table.f td.sp { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 table.f td.nm { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
 .doc { gap: 1px; line-height: 1.4; padding: 6px 10px; }
 .vb:disabled { color: #A9AFB8; cursor: default; background: #fff; }
+/* 설계변경 두 줄 양식 */
+table.f tr.redline td { color: #C00000; }
+table.f tr.ptop td { border-bottom: 1px dotted #D4D4D4; }
+table.f tr.pbot td { border-bottom: 1px solid #9A9A9A; }
+table.f tr.nsrow td { font-weight: 700; }
+table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
