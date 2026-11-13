@@ -132,9 +132,12 @@ export function costRows(title: string, c: CostResult, compare?: { label: string
         // 이윤 = 목표 공급가액 − (D + E + G) : 끝수 정리 차이를 이윤에서 정산
         const base = basisFormula((r.basis ?? '').replace(/\s*[+−-]\s*[\d,]+$/, ''), (no) => at.get(no));
         const D = at.get('D'), E = at.get('E'), G = at.get('G');
+        // 순공사원가 다음에 추가한 비목도 총원가에 들어간다
+        const X = c.rows.filter((q) => q.extra && !q.group && q.amount !== null).map((q) => at.get(q.no)).filter(Boolean);
         if (base && D && E && G) {
-          const pre = `(${D}+${E}+${fl(base)}+${G})`;
-          amt = { f: `${opts.target.replace(/\{P\}/g, pre)}-${D}-${E}-${G}`, v: r.amount };
+          const xs = X.map((x) => `+${x}`).join('');
+          const pre = `(${D}+${E}+${fl(base)}+${G}${xs})`;
+          amt = { f: `${opts.target.replace(/\{P\}/g, pre)}-${D}-${E}-${G}${X.map((x) => `-${x}`).join('')}`, v: r.amount };
         }
       } else if (r.basis) {
         const f = basisFormula(r.basis, (no) => at.get(no));

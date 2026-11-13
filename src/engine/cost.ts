@@ -133,7 +133,7 @@ export function costSheet(input: CostInput): CostResult {
 
   const BASE_T: Record<ExtraBase, string> = { A: 'A', dl: '4', B: 'B', exp: '6', 'A+dl': '(A + 4)', 'A+dl+exp': '(A + 4 + 6)', 'A+B': '(A + B)', 'A+B+C': 'D', D: 'D', 'D+gen': '(D + E)' };
   const xRow = (x: ExtraItem, a: number | null, no: string, group: CostRow['group']): CostRow => ({
-    key: `x:${x.id}`, no, group, label: x.label, amount: a, extra: true,
+    key: `x:${x.id}`, no, group, label: x.label, amount: a, extra: true, optional: true,
     ...(x.rate !== undefined && x.amount === undefined ? { rate: pctText(x.rate), basis: `${BASE_T[x.base ?? 'A+B']} × ${k(x.rate)}` } : { basis: '직접 금액' }),
   });
   const rows: CostRow[] = [

@@ -1,6 +1,6 @@
 import type { Amount, Line, Sheet } from './types';
 import { applyRate, pickLines, sectionAmount, lineAmount, ZERO, add } from './estimate';
-import { costSheet, roundTo, type CostKey, type CostResult, type RoundMode } from './cost';
+import { costSheet, roundTo, type CostKey, type CostResult, type RoundMode, type ExtraItem } from './cost';
 
 /** 하도급에서 기본으로 빼는 비목 — 원도급사가 부담하는 보험료·공제부금·보증수수료 */
 export const SUB_DEFAULT_EXCLUDE: CostKey[] = ['ind', 'emp', 'health', 'pension', 'care', 'retire', 'machGuar', 'subGuar'];
@@ -15,6 +15,8 @@ export interface SubcontractInput {
   exclude: Set<CostKey>;
   /** 하도급 공급가액 끝수 */
   round: RoundMode;
+  /** 원가계산서 추가 비목 */
+  extra?: ExtraItem[];
 }
 
 export interface SubcontractResult {
@@ -39,11 +41,11 @@ export function buildSubcontract(inp: SubcontractInput): SubcontractResult {
   const subLines = subSheet.sections[0].lines;
 
   const tDirect = sectionAmount(targetSheet, 'main');
-  const tCalc = costSheet({ direct: tDirect, exclude: inp.exclude });
-  const target = costSheet({ direct: tDirect, exclude: inp.exclude, targetSupply: roundTo(tCalc.supply, 'floor1000') });
+  const tCalc = costSheet({ direct: tDirect, exclude: inp.exclude, extra: inp.extra });
+  const target = costSheet({ direct: tDirect, exclude: inp.exclude, extra: inp.extra, targetSupply: roundTo(tCalc.supply, 'floor1000') });
 
   const sDirect = sectionAmount(subSheet, 'main');
-  const sub = costSheet({ direct: sDirect, exclude: inp.exclude, targetSupply: roundTo(target.supply * inp.rate, inp.round) });
+  const sub = costSheet({ direct: sDirect, exclude: inp.exclude, extra: inp.extra, targetSupply: roundTo(target.supply * inp.rate, inp.round) });
   return { targetLines, subLines, target, sub, ratio: target.total ? sub.total / target.total : 0 };
 }
 

@@ -44,9 +44,9 @@ export function useDocs() {
     const changeSht = list.find((d) => d.key === 'change')!.sheet;
     const subs = s.subs.map((sub) => ({
       sub,
-      result: buildSubcontract({ base: start, pick: new Set(sub.pick), rate: sub.rate, exclude: new Set(sub.exclude), round: sub.round }),
+      result: buildSubcontract({ base: start, pick: new Set(sub.pick), rate: sub.rate, exclude: new Set(sub.exclude), round: sub.round, extra: s.extraCost ?? [] }),
       /** 설계변경 기준 하도급 (같은 공종 + 고른 신규 항목) */
-      change: buildSubcontract({ base: changeSht, pick: new Set([...sub.pick, ...(sub.pickNew ?? [])]), rate: sub.rate, exclude: new Set(sub.exclude), round: sub.round }),
+      change: buildSubcontract({ base: changeSht, pick: new Set([...sub.pick, ...(sub.pickNew ?? [])]), rate: sub.rate, exclude: new Set(sub.exclude), round: sub.round, extra: s.extraCost ?? [] }),
     }));
     return { list, get: (k: string) => list.find((d) => d.key === k) ?? list[0], subs };
   }, [s, start, design, contract]);
