@@ -34,8 +34,10 @@ select, option, input, textarea { background-color: #fff; }
 .dd a:hover, .dd button:hover { background: var(--sel); }
 .dd span { color: var(--muted); }
 
-.toolbar { display: flex; align-items: center; min-height: 60px; padding: 2px 4px; background: #F7F8FA; border-bottom: 1px solid var(--line); flex-wrap: wrap; flex-shrink: 0; }
-.grp { display: flex; align-items: center; gap: 1px; padding: 0 5px; border-right: 1px solid var(--line2); }
+.toolbar { display: flex; align-items: stretch; min-height: 76px; padding: 2px 4px; background: #F7F8FA; border-bottom: 1px solid var(--line); flex-wrap: wrap; flex-shrink: 0; }
+.grp { display: flex; flex-direction: column; padding: 0 5px; border-right: 1px solid var(--line2); }
+.grp-b { display: flex; align-items: center; gap: 1px; flex: 1; }
+.grp-l { text-align: center; font-size: 11px; color: var(--muted); padding: 1px 0 2px; white-space: nowrap; }
 .grp:last-child { border-right: 0; }
 .fb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 50px; height: 54px; padding: 0 3px; border: 1px solid transparent; background: transparent; font-size: 12px; color: var(--ink); cursor: pointer; border-radius: 3px; text-decoration: none; white-space: nowrap; }
 .fb:hover { background: var(--hover); border-color: #B8C7DD; color: var(--ink); }
@@ -233,3 +235,12 @@ table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
 .bb-r.top { border-bottom: 1px dashed #555C66; padding-bottom: 6px; margin-bottom: 4px; }
 .bb-k { display: inline-flex; align-items: center; gap: 8px; }
 .bb-sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(15,42,74,.25); flex: none; }
+
+/* 엑셀식 리본 탭 */
+.menu { height: 30px; align-items: flex-end; background: #F7F8FA; gap: 2px; }
+.menu > div > button.file { height: 26px; margin-bottom: 2px; padding: 0 14px; background: var(--accent); color: #fff; border-radius: 3px 3px 0 0; }
+.menu > div > button.file:hover, .menu > div > button.file.on { background: #173F73; }
+.menu > div > button.rt { height: 28px; padding: 0 14px; border: 1px solid transparent; border-bottom: 0; border-radius: 3px 3px 0 0; color: var(--ink); }
+.menu > div > button.rt.sel { background: #F7F8FA; border-color: var(--line2); color: var(--accent); font-weight: 700; position: relative; top: 1px; }
+.menu { border-bottom: 1px solid var(--line2); }
+.rb-empty { align-self: center; color: var(--muted); padding: 0 10px; font-size: 12px; }
