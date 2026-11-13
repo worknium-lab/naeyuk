@@ -27,7 +27,35 @@ export interface ULine {
   note?: string;
 }
 export interface UnitDef { no: string; name: string; spec: string; unit: string; note?: string; lines: ULine[]; from?: string }
-export interface CalcDef { no: string; name: string; unit: string; l: number; m: number; e: number }
+export interface CalcDef {
+  no: string; name: string; unit: string;
+  /** 산출 당시 값 (원 미만 버림 전 합계와 같음) */
+  l: number; m: number; e: number;
+  /** 산출근거에서 읽은 노임 줄 — 노임이 바뀌면 그 차이만큼 노무비를 고친다 */
+  laborLines?: { wage: string; mult: number }[];
+  /** 노무비의 % 를 다른 비목에 넣는 줄 (공구손료 등) */
+  pctOfLabor?: { col: 'm' | 'e'; pct: number };
+}
+
+/** 단가산출 값 — 노임이 갱신되면 연결된 노임 줄의 차이를 반영 */
+export function calcPrice(b: Basis, c: CalcDef): Price {
+  if (!c.laborLines?.length) return { l: c.l, m: c.m, e: c.e };
+  const wages = new Map(Object.values(b.wages).map((w) => [normName(w.name), w]));
+  let dl = 0;
+  for (const ln of c.laborLines) {
+    const w = wages.get(normName(ln.wage));
+    if (w) dl += (wageOf(w) - w.old) * ln.mult;
+  }
+  const r1 = (x: number) => Math.floor(x * 10 + 1e-6) / 10;
+  dl = r1(dl);
+  const l = floor(c.l + dl);
+  let m = c.m, e = c.e;
+  if (c.pctOfLabor) {
+    const d = floor(r1((dl * c.pctOfLabor.pct) / 100));
+    if (c.pctOfLabor.col === 'm') m += d; else e += d;
+  }
+  return { l, m, e };
+}
 
 export interface Basis {
   wages: Record<string, Wage>;
@@ -75,7 +103,7 @@ export function computeUnits(b: Basis): Map<string, UnitCalc> {
         l = ln.qty * p.l; m = ln.qty * p.m; e = ln.qty * p.e;
       } else if (ln.kind === 'calc') {
         const c = calcs.get(ln.ref ?? '');
-        const p = c ?? { l: 0, m: 0, e: 0 };
+        const p = c ? calcPrice(b, c) : { l: 0, m: 0, e: 0 };
         price = p.l + p.m + p.e;
         l = ln.qty * p.l; m = ln.qty * p.m; e = ln.qty * p.e;
       } else if (ln.kind === 'pct') {
@@ -107,7 +135,7 @@ export function basisPrice(b: Basis, units: Map<string, UnitCalc>, ref?: string)
   const u = units.get(ref);
   if (u) return u.total;
   const c = b.calcs.find((x) => x.no === ref);
-  return c ? { l: c.l, m: c.m, e: c.e } : undefined;
+  return c ? calcPrice(b, c) : undefined;
 }
 
 /** 근거에 연결된 내역 줄의 단가를 근거 값으로 바꾼다 (설계내역서) */

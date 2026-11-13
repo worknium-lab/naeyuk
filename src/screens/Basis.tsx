@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { useStore } from '../store';
-import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount } from '../engine';
+import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice } from '../engine';
 import { useDocs } from '../docs';
 import calcRows from '../data/calc.rows.json';
 import machineRows from '../data/machine.rows.json';
@@ -199,7 +199,7 @@ export function Calc() {
         </Group>
         <Group label="계산"><FB icon="book" label="품셈" onClick={() => open('pumsem')} /><FB icon="recalc" label="재계산" onClick={() => toast('전체재계산했습니다')} /></Group>
       </>}
-      info={<FoldBar fold={fold} extra={<><div style={{ flex: 1 }} /><span className="k">산출 {groups.length}건 · 제목 줄의 노란 칸(단가)을 고치면 연결된 호표·내역서가 다시 계산됩니다 · 수식 연동은 다음 단계</span></>} />}
+      info={<FoldBar fold={fold} extra={<><div style={{ flex: 1 }} /><span className="k">산출 {groups.length}건 · 노란 칸은 산출 당시 단가 · 산출근거의 노임 줄은 노임단가에 연결되어 갱신 차이가 합계에 더해집니다</span></>} />}
     >
       <div style={{ padding: 10 }}>
         <table className="f" style={{ width: '100%' }}>
@@ -218,7 +218,7 @@ export function Calc() {
                     const c = s.basis.calcs.find((x) => x.no === no)!;
                     const setC = (f: 'l' | 'm' | 'e', v: number) => set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.map((x) => (x.no === no ? { ...x, [f]: v } : x)) } }));
                     return <>
-                      <td className="n" id={no}>{won(c.l + c.m + c.e)}</td>
+                      <td className="n" id={no} title={c.laborLines?.length ? `노임 줄 ${c.laborLines.length}개 연결` : '고정값'}>{(() => { const p = calcPrice(s.basis, c); const t = p.l + p.m + p.e; const t0 = c.l + c.m + c.e; return <>{won(t)}{t !== t0 && <div className="cf">노임 갱신 +{won(t - t0)}</div>}</>; })()}</td>
                       {(['l', 'm', 'e'] as const).map((f) => <td key={f} className="n"><input className="q" style={{ width: 84 }} value={c[f]} onClick={(e) => e.stopPropagation()} onChange={(e) => setC(f, Number(e.target.value) || 0)} /></td>)}
                     </>;
                   })() : [5, 6, 7, 8].map((k) => <td key={k} className="n">{r[k]}</td>)}
@@ -391,7 +391,7 @@ export function Labor() {
             <div className="r"><span>선택 직종 갱신 후</span><b>{won(sim)}</b></div>
             <div className="r"><span>차이</span><b>{sim - before >= 0 ? '+' : ''}{won(sim - before, { tri: false, zero: '0' })}</b></div>
           </div>
-          <div className="hint">노임을 쓰는 일위대가 호표 → 내역서 단가 → 원가계산서까지 다시 계산됩니다. 단가산출(단산)은 아직 고정값이라 노임 갱신이 들어가지 않습니다.</div>
+          <div className="hint">노임을 쓰는 일위대가 호표 → 내역서 단가 → 원가계산서까지 다시 계산됩니다. 단가산출(단산)은 산출근거에서 읽은 노임 줄만큼 반영됩니다 (기계경비는 아직 고정값).</div>
           <button type="button" className="btn pri" onClick={() => { apply('cur'); toast('일괄 갱신했습니다'); }}>선택 직종 갱신</button>
           <button type="button" className="btn" onClick={() => apply('old')}>선택 직종 되돌리기</button>
         </aside>

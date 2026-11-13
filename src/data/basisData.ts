@@ -51,10 +51,20 @@ export function basisData(): Basis {
     }
     cur.lines.push(ln);
   });
-  const calcs = (calcRows as R[]).filter((r) => r[0] === 'grp').map((r) => {
+  const crow = calcRows as R[];
+  const calcs = crow.filter((r) => r[0] === 'grp').map((r) => {
     const name = r[4].replace(/^\d+\./, '').replace(/\s*\[[^\]]*\]\s*$/, '').trim();
     const unit = (r[4].match(/\[([^\]]*)\]\s*$/) ?? [])[1] ?? '';
-    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]) };
+    // "특별인부 : 187,435 × 3 인 ÷ 15 m = …" 같은 노임 줄
+    const laborLines: { wage: string; mult: number }[] = [];
+    let pctOfLabor: { col: 'm' | 'e'; pct: number } | undefined;
+    for (const x of crow.filter((y) => y[1] === r[1] && y[0] !== 'grp')) {
+      const m = x[4].match(/^(.+?)\s*:\s*[\d,]+\s*×\s*([\d.]+)\s*인(?:\s*÷\s*([\d.]+))?/);
+      if (m && W[normName(m[1])]) laborLines.push({ wage: m[1], mult: Number(m[2]) / (m[3] ? Number(m[3]) : 1) });
+      const p = x[4].match(/노무비의\s*([\d.]+)\s*%/);
+      if (p) pctOfLabor = { col: 'm', pct: Number(p[1]) };
+    }
+    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]), laborLines, pctOfLabor };
   });
   return { wages: W, mats, units, calcs };
 }
