@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
-import { canPrint } from '../ui/Ask';
+import { canPrint, useAsk } from '../ui/Ask';
 import { useStore } from '../store';
-import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, calcEval, machinePrice, quotePrice, type MachineDef, type QuoteDef, type CalcDef, type CalcLine } from '../engine';
+import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, calcEval, mapSheet, machinePrice, quotePrice, type MachineDef, type QuoteDef, type CalcDef, type CalcLine, type Line } from '../engine';
 import { basisData } from '../data/basisData';
 import { useDocs } from '../docs';
 import calcRows from '../data/calc.rows.json';
@@ -186,7 +186,69 @@ export function Calc() {
       onBlur={(e) => { const n = Number(e.target.value.replace(/,/g, '')); if (Number.isFinite(n) && n !== v) on(n); }}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
   );
-  const Was = ({ now, base }: { now: number; base: number }) => Math.abs(now - base) >= 0.05 ? <span className="cf"> (당초 {f1(base)})</span> : null;
+  const ask = useAsk();
+  const wageList = Object.values(s.basis.wages);
+  const matList = Object.values(s.basis.mats);
+  const machList = s.basis.machines ?? [];
+  const mutLines = (no: string, f: (ls: CalcLine[]) => CalcLine[]) => set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.map((x) => (x.no === no ? { ...x, lines: f(x.lines ?? []) } : x)) } }));
+  const [pick, setPick] = useState<{ no: string; i: number } | null>(null);
+  const addLine = (ln: CalcLine) => {
+    if (!pick) { toast('먼저 줄을 넣을 단가산출(또는 그 안의 줄)을 누르세요'); return; }
+    const { no, i } = pick;
+    const at = i < 0 ? (calcs.find((c) => c.no === no)?.lines?.length ?? 0) : i + 1;
+    mutLines(no, (ls) => [...ls.slice(0, at), { ...ln, added: true } as CalcLine, ...ls.slice(at)]);
+    setPick({ no, i: at });
+    if (!fold.isOpen(no)) fold.toggle(no);
+  };
+  const delLine = (no: string, i: number) => mutLines(no, (ls) => ls.filter((_, k) => k !== i));
+  const upLine = (no: string, i: number) => mutLines(no, (ls) => { if (i < 1) return ls; const n = [...ls]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; });
+  const NEW: Record<string, () => CalcLine> = {
+    제목: () => ({ k: 'text', text: '가. 항목', ind: 2, bold: true }),
+    노임: () => ({ k: 'labor', wage: wageList.find((w) => w.name.includes('보통인부'))?.name ?? wageList[0]?.name ?? '', n: 1, div: 1, per: '', base: 0, ind: 3 }),
+    자재: () => { const m = matList[0]; return { k: 'mat', mat: m?.key ?? '', name: m?.name ?? '', spec: m?.spec ?? '', f: [{ v: 1, u: m?.unit }, { v: 1 }], base: 0, ind: 3 }; },
+    장비: () => ({ k: 'mach', machine: machList[0]?.no ?? 'M1', col: 'l', ops: [{ op: '×', v: 1, u: 'hr' }], base: 0, ind: 3 }),
+    '작업량 Q': () => ({ k: 'q', q: 0.2, K: 1, f: 1, E: 0.8, Cm: 18, unit: '㎥/hr', base: 0, ind: 2 }),
+    '노무비 %': () => ({ k: 'pct', pct: 3, col: 'm', base: 0, ind: 2 }),
+    소계: () => ({ k: 'sub', label: '소 계', cols: {}, ind: 3 }),
+    합계: () => ({ k: 'sub', label: '계', cols: {}, final: true, ind: 2 }),
+  };
+  const nextNo = () => `단산${Math.max(0, ...calcs.map((c) => Number(c.no.replace('단산', '')) || 0)) + 1}`;
+  const newCalc = async () => {
+    const name = await ask({ title: '새 단가산출', label: '공종 이름', value: '' });
+    if (!name) return;
+    const unit = (await ask({ title: '새 단가산출', label: `${name} — 단위`, value: '㎡' })) ?? '';
+    const no = nextNo();
+    set((st) => ({ ...st, basis: { ...st.basis, calcs: [...st.basis.calcs, { no, name, unit, l: 0, m: 0, e: 0, own: true, lines: [
+      { k: 'text', text: '1. 노무비', ind: 1, bold: true, added: true },
+    ] }] } }));
+    fold.toggle(no);
+    setPick({ no, i: 0 });
+    toast(`${no} ${name}을(를) 만들었습니다 — 위 [줄 추가]의 노무·재료·장비 버튼으로 줄을 넣으세요`);
+  };
+  const putToSheet = (c: CalcDef) => {
+    const main = s.design.sections.find((x) => x.section === 'main');
+    const root = main?.lines[0];
+    const g = root?.children?.filter((x) => x.children).at(-1) ?? root;
+    if (!g) return;
+    const item: Line = { id: 'C' + Date.now().toString(36), level: 0, mark: '', name: c.name, spec: '', unit: c.unit, qty: 1, lu: 0, mu: 0, eu: 0, ref: c.no, link: true };
+    set((st) => ({ ...st, design: mapSheet(st.design, (l) => (l.id === g.id ? { ...l, children: [...(l.children ?? []), item] } : l)) }));
+    toast(`설계내역서 [${g.name}] 끝에 ${c.name}(${c.no} 연결)을 넣었습니다 — 내역서에서 수량을 고치세요`);
+  };
+  const delCalc = async (c: CalcDef) => {
+    if (await ask({ title: '단가산출 지우기', label: `${c.no} ${c.name}을(를) 지울까요?`, confirmOnly: true, ok: '지우기' })) {
+      set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.filter((x) => x.no !== c.no) } }));
+      toast(`${c.no}를 지웠습니다`);
+    }
+  };
+  const sel = (v: string, opts: [string, string][], on: (v: string) => void, w = 120) => (
+    <select className="qs" style={{ width: w }} value={v} onChange={(e) => on(e.target.value)} onClick={(e) => e.stopPropagation()}>
+      {opts.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+    </select>
+  );
+  const Txt = ({ v, on, w = 160 }: { v: string; on: (t: string) => void; w?: number }) => (
+    <input className="qi" style={{ width: w, textAlign: 'left' }} defaultValue={v} key={v} onBlur={(e) => e.target.value !== v && on(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+  );
+  const Was = ({ now, base }: { now: number; base: number }) => base !== 0 && Math.abs(now - base) >= 0.05 ? <span className="cf"> (당초 {f1(base)})</span> : null;
   const COL: Record<string, string> = { l: '노무비', m: '재료비', e: '경  비' };
   const cell = (cols: Partial<Record<'l' | 'm' | 'e', number>>, t?: number, strong = false) => {
     const S = ({ x }: { x?: number }) => <td className="n">{x === undefined ? '' : strong ? <b>{f1(x)}</b> : f1(x)}</td>;
@@ -197,12 +259,25 @@ export function Calc() {
     set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.map((c) => { const f = fresh.calcs.find((x) => x.no === c.no); return f ? { ...c, lines: f.lines, l: f.l, m: f.m, e: f.e } : c; }) } }));
     toast('산출근거를 원래 값으로 되돌렸습니다');
   };
-  const evals = calcs.map((c) => ({ c, ev: c.lines?.length ? calcEval(s.basis, c) : null }));
+  const evals = calcs.map((c) => ({ c, ev: c.lines?.length || c.own ? calcEval(s.basis, c) : null }));
   const changed = evals.filter(({ c, ev }) => ev && (ev.price.l !== c.l || ev.price.m !== c.m || ev.price.e !== c.e));
   return (
     <Shell
       doc="단가산출"
       toolbar={<>
+        <Group label="작성">
+          <FB icon="new" label="새 단산" primary title="새 단가산출 만들기" onClick={newCalc} />
+        </Group>
+        <Group label="줄 추가 (구분)">
+          <FB icon="lines" label="제목" onClick={() => addLine(NEW['제목']())} />
+          <FB icon="labor" label="노무" title="노임 × 인 ÷ 기준수량" onClick={() => addLine(NEW['노임']())} />
+          <FB icon="material" label="재료" title="자재단가 × 수량 × 할증" onClick={() => addLine(NEW['자재']())} />
+          <FB icon="machine" label="장비" title="기계경비 × 시간, ÷ 작업량 Q" onClick={() => addLine(NEW['장비']())} />
+          <FB icon="calc" label="작업량 Q" title="Q = 3,600 × q × K × f × E ÷ Cm" onClick={() => addLine(NEW['작업량 Q']())} />
+          <FB icon="pct" label="잡비 %" title="노무비의 % (공구손료 등)" onClick={() => addLine(NEW['노무비 %']())} />
+          <FB icon="plus" label="소계" onClick={() => addLine(NEW['소계']())} />
+          <FB icon="sum" label="합계" onClick={() => addLine(NEW['합계']())} />
+        </Group>
         <Group label="근거 단가">
           <FB icon="labor" label="노임단가" to="/labor" /><FB icon="material" label="자재단가" to="/material" /><FB icon="machine" label="기계경비" to="/machine" />
         </Group>
@@ -215,7 +290,7 @@ export function Calc() {
           <FB icon="unit" label="일위대가" to="/unit" />
         </Group>
       </>}
-      info={<FoldBar fold={fold} extra={<><div style={{ flex: 1 }} /><span className="k">산출 {calcs.length}건 · 바뀐 산출 {changed.length}건 · 노란 칸은 고칠 수 있습니다(수량·인·효율) · 노임·자재·기계경비를 고치면 산출근거가 바로 다시 계산됩니다</span></>} />}
+      info={<FoldBar fold={fold} extra={<><span className="k" style={{ marginLeft: 8 }}>{pick ? <>줄 넣을 곳: <b>{pick.no}</b> {pick.i < 0 ? '끝' : `${pick.i + 1}번째 줄 아래`}</> : '줄을 누른 뒤 [줄 추가] 버튼으로 노무·재료·장비 줄을 넣습니다'}</span><div style={{ flex: 1 }} /><span className="k">산출 {calcs.length}건 · 바뀐 산출 {changed.length}건 · 노란 칸은 고칠 수 있습니다(수량·인·효율) · 노임·자재·기계경비를 고치면 산출근거가 바로 다시 계산됩니다</span></>} />}
     >
       <div style={{ padding: 10 }}>
         <table className="f calc" style={{ width: '100%' }}>
@@ -228,32 +303,33 @@ export function Calc() {
               const isOpen = fold.isOpen(c.no);
               return (
                 <Fragment key={c.no}>
-                  <tr className="g">
+                  <tr className={'g click' + (pick?.no === c.no && pick.i < 0 ? ' sel' : '')} onClick={() => setPick({ no: c.no, i: -1 })}>
                     <td className="c">{ev && <Tg open={isOpen} onClick={() => fold.toggle(c.no)} label={c.name} />}</td>
-                    <td>{n}.{c.name} [{c.unit}]{!rawGroups.includes(c.no) && <span className="cf"> · 다른 내역서에서 가져옴</span>}{!ev && rawGroups.includes(c.no) && <span className="cf"> · 산출근거 없음 (값 직접 입력)</span>}</td>
-                    <td className="n" id={c.no}>{won(t)}{t !== t0 && <div className="cf">당초 {won(t0)} · {t - t0 > 0 ? '+' : ''}{won(t - t0, { tri: false })}</div>}</td>
-                    {(['l', 'm', 'e'] as const).map((f) => <td key={f} className="n">{ev ? <>{won(p[f])}{p[f] !== c[f] && <div className="cf">당초 {won(c[f])}</div>}</> : <input className="q" style={{ width: 84 }} value={c[f]} onChange={(e) => setCalc(c.no, { [f]: Number(e.target.value) || 0 })} />}</td>)}
-                    <td className="c" /><td><span className="lk">{c.no}</span></td>
+                    <td>{n}.{c.name} [{c.unit}]{c.own && <span className="cf"> · 새로 작성</span>}{!c.own && !rawGroups.includes(c.no) && <span className="cf"> · 다른 내역서에서 가져옴</span>}{!ev && rawGroups.includes(c.no) && <span className="cf"> · 산출근거 없음 (값 직접 입력)</span>}</td>
+                    <td className="n" id={c.no}>{won(t)}{!c.own && t !== t0 && <div className="cf">당초 {won(t0)} · {t - t0 > 0 ? '+' : ''}{won(t - t0, { tri: false })}</div>}</td>
+                    {(['l', 'm', 'e'] as const).map((f) => <td key={f} className="n">{ev ? <>{won(p[f])}{!c.own && p[f] !== c[f] && <div className="cf">당초 {won(c[f])}</div>}</> : <input className="q" style={{ width: 84 }} value={c[f]} onChange={(e) => setCalc(c.no, { [f]: Number(e.target.value) || 0 })} />}</td>)}
+                    <td className="c" /><td><span className="lk">{c.no}</span>{c.own && <button type="button" className="vb mini" style={{ marginLeft: 4 }} title="이 단산을 단가로 쓰는 항목을 설계내역서에 넣기" onClick={() => putToSheet(c)}>내역서에 넣기</button>}{c.own && <button type="button" className="xb" title="이 단산 지우기" onClick={() => delCalc(c)}>×</button>}</td>
                   </tr>
                   {ev && isOpen && ev.rows.map((r, i) => {
                     const l = r.line;
                     const pad = 6 + l.ind * 14;
+                    const ad = !!l.added;
                     const td = (body: ReactNode, cols: Partial<Record<'l' | 'm' | 'e', number>> = {}, tag = '', ref: ReactNode = null, total?: number, strong = false) => (
-                      <tr key={i} className={l.k === 'sub' ? 'sum' : ''}>
-                        <td /><td style={{ paddingLeft: pad }}>{body}</td>{cell(cols, total, strong)}<td className="c">{tag}</td><td>{ref}</td>
+                      <tr key={i} className={(l.k === 'sub' ? 'sum ' : '') + (ad ? 'added ' : '') + (pick?.no === c.no && pick.i === i ? 'sel' : '')} onClick={() => setPick({ no: c.no, i })}>
+                        <td className="c ctl">{ad && <><button type="button" className="xb" title="위로" onClick={() => upLine(c.no, i)}>↑</button><button type="button" className="xb" title="이 줄 지우기" onClick={() => delLine(c.no, i)}>×</button></>}</td><td style={{ paddingLeft: pad }}>{body}</td>{cell(cols, total, strong)}<td className="c">{tag}</td><td>{ref}</td>
                       </tr>
                     );
                     switch (l.k) {
-                      case 'labor': return td(<>{l.wage} : <a className="pl" href="#/labor">{won(r.price!)}</a> × <Num v={l.n} on={(v) => setLine(c.no, i, { n: v })} /> 인{l.div ? <> ÷ <Num v={l.div} on={(v) => setLine(c.no, i, { div: v })} /> {l.per}</> : null} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { l: r.now }, '노무', l.ref && <span className="lk">{l.ref}</span>);
-                      case 'mat': return td(<>{l.name} ({l.spec}) &nbsp;<a className="pl" href="#/material">{won(r.price!)}</a>{l.f.map((x, k) => <Fragment key={k}> × <Num v={x.v} w={46} on={(v) => setLine(c.no, i, { f: l.f.map((y, z) => (z === k ? { ...y, v } : y)) })} />{x.u ? ` ${x.u}` : ''}</Fragment>)} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { m: r.now }, '재료', l.ref && <span className="lk">{l.ref}</span>);
-                      case 'mach': return td(<>{COL[l.col]} : <a className="pl" href="#/machine">{won(r.price!)}</a>{l.ops.map((o, k) => <Fragment key={k}> {o.op} {o.v === 'Q' ? <b title="위 작업량 Q">Q</b> : <Num v={o.v} w={40} on={(v) => setLine(c.no, i, { ops: l.ops.map((y, z) => (z === k ? { ...y, v } : y)) })} />}{o.u ? ` ${o.u}` : ''}</Fragment>)} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { [l.col]: r.now }, '장비', <span className="lk">{l.machine.replace('M', '기계')}</span>);
+                      case 'labor': return td(<>{ad ? sel(l.wage, wageList.map((w) => [w.name, w.name]), (v) => setLine(c.no, i, { wage: v })) : l.wage} : <a className="pl" href="#/labor">{won(r.price!)}</a> × <Num v={l.n} on={(v) => setLine(c.no, i, { n: v })} /> 인{l.div || ad ? <> ÷ <Num v={l.div ?? 1} on={(v) => setLine(c.no, i, { div: v })} /> {ad ? <Txt v={l.per ?? ''} w={36} on={(t) => setLine(c.no, i, { per: t })} /> : l.per}</> : null} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { l: r.now }, '노무', l.ref && <span className="lk">{l.ref}</span>);
+                      case 'mat': return td(<>{ad ? sel(l.mat, matList.map((m) => [m.key, `${m.name} (${m.spec})`]), (v) => { const m = s.basis.mats[v]; setLine(c.no, i, { mat: v, name: m.name, spec: m.spec, f: [{ ...l.f[0], u: m.unit }, ...l.f.slice(1)] }); }, 220) : <>{l.name} ({l.spec})</>} &nbsp;<a className="pl" href="#/material">{won(r.price!)}</a>{l.f.map((x, k) => <Fragment key={k}> × <Num v={x.v} w={46} on={(v) => setLine(c.no, i, { f: l.f.map((y, z) => (z === k ? { ...y, v } : y)) })} />{x.u ? ` ${x.u}` : ''}</Fragment>)} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { m: r.now }, '재료', l.ref && <span className="lk">{l.ref}</span>);
+                      case 'mach': return td(<>{ad ? <>{sel(l.machine, machList.map((m) => [m.no, `${m.no.replace('M', '기계')} ${m.name}`]), (v) => setLine(c.no, i, { machine: v }), 170)} {sel(l.col, [['l', '노무비'], ['m', '재료비'], ['e', '경비']], (v) => setLine(c.no, i, { col: v }), 72)}</> : COL[l.col]} : <a className="pl" href="#/machine">{won(r.price!)}</a>{l.ops.map((o, k) => <Fragment key={k}> {ad ? sel(o.op, [['×', '×'], ['÷', '÷']], (v) => setLine(c.no, i, { ops: l.ops.map((y, z) => (z === k ? { ...y, op: v } : y)) }), 40) : o.op} {o.v === 'Q' ? <b title="위 작업량 Q">Q</b> : <Num v={o.v} w={40} on={(v) => setLine(c.no, i, { ops: l.ops.map((y, z) => (z === k ? { ...y, v } : y)) })} />}{o.u ? ` ${o.u}` : ''}</Fragment>)}{ad && <> <button type="button" className="vb mini" onClick={() => setLine(c.no, i, { ops: [...l.ops, { op: '×', v: 1 }] })}>+ ×</button> <button type="button" className="vb mini" title="같은 산출의 작업량 Q로 나누기" onClick={() => setLine(c.no, i, { ops: [...l.ops, { op: '÷', v: 'Q' }] })}>÷ Q</button></>} = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { [l.col]: r.now }, '장비', <span className="lk">{l.machine.replace('M', '기계')}</span>);
                       case 'q': return td(<div className="qf">
                         <div>q = <Num v={l.q} w={44} on={(v) => setLine(c.no, i, { q: v })} /> &nbsp; K = <Num v={l.K} w={44} on={(v) => setLine(c.no, i, { K: v })} /> &nbsp; f = <Num v={l.f} w={44} on={(v) => setLine(c.no, i, { f: v })} /> &nbsp; E = <Num v={l.E} w={44} on={(v) => setLine(c.no, i, { E: v })} /> &nbsp; Cm = <Num v={l.Cm} w={44} on={(v) => setLine(c.no, i, { Cm: v })} /> sec</div>
                         <div>Q = 3,600 × q × K × f × E ÷ Cm = 3,600 × {l.q} × {l.K} × {l.f} × {l.E} ÷ {l.Cm} = <b>{f1(r.now)} {l.unit}</b><Was now={r.now} base={l.base} /></div>
                       </div>, {}, '작업량');
-                      case 'pct': return td(<>{f1(r.price!)} × <Num v={l.pct} w={40} on={(v) => setLine(c.no, i, { pct: v })} /> % = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { [l.col]: r.now }, l.col === 'm' ? '재료' : '경비');
-                      case 'sub': return td(<b>{l.label} : {f1(r.now)}</b>, r.cols ?? {}, l.final ? '합계' : (l.tag ?? '소계'), null, r.now, true);
-                      default: return td(<span style={{ fontWeight: l.bold ? 700 : undefined, whiteSpace: 'pre' }}>{l.text}</span>, {}, '', l.ref && <span className="lk">{l.ref}</span>);
+                       case 'pct': return td(<>{ad && <>노무비 소계 → {sel(l.col, [['m', '재료비'], ['e', '경비']], (v) => setLine(c.no, i, { col: v }), 72)} : </>}{f1(r.price!)} × <Num v={l.pct} w={40} on={(v) => setLine(c.no, i, { pct: v })} /> % = <b>{f1(r.now)}</b><Was now={r.now} base={l.base} /></>, { [l.col]: r.now }, l.col === 'm' ? '재료' : '경비');
+                      case 'sub': return td(<b>{ad ? <Txt v={l.label} w={90} on={(t) => setLine(c.no, i, { label: t })} /> : l.label} : {f1(r.now)}</b>, r.cols ?? {}, l.final ? '합계' : (l.tag ?? '소계'), null, r.now, true);
+                      default: return td(ad ? <Txt v={l.text} w={260} on={(t) => setLine(c.no, i, { text: t })} /> : <span style={{ fontWeight: l.bold ? 700 : undefined, whiteSpace: 'pre' }}>{l.text}</span>, {}, '', l.ref && <span className="lk">{l.ref}</span>);
                     }
                   })}
                 </Fragment>

@@ -250,3 +250,12 @@ table.f input.qi { height: 18px; border: 1px solid #D8C98A; background: #FFFDF0;
 table.f input.qi:focus { outline: 2px solid #9DB4D6; border-color: #9DB4D6; }
 a.pl { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
 .qf > div { line-height: 24px; }
+
+table.f select.qs { height: 20px; border: 1px solid #D8C98A; background: #FFFDF0; font: inherit; font-size: 12px; }
+table.f tr.added td { background: #FBFCFE; }
+table.f tr.addbar td { background: #F3F6FA; padding: 4px 6px; }
+table.f tr.addbar .k { color: var(--muted); font-size: 12px; margin-right: 6px; }
+.vb.mini { height: 20px; padding: 0 7px; margin-right: 3px; font-size: 11.5px; }
+.xb { border: 0; background: transparent; color: #8A929E; cursor: pointer; font-size: 13px; padding: 0 3px; line-height: 16px; }
+.xb:hover { color: #C00000; }
+td.ctl { white-space: nowrap; }

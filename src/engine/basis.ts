@@ -39,11 +39,14 @@ export interface CalcDef {
   machineLines?: { machine: string; col: 'l' | 'm' | 'e'; mult: number; base: number }[];
   /** 산출근거를 줄 단위로 구조화한 것 — 있으면 이것으로 계산한다 */
   lines?: CalcLine[];
+  /** 이 프로그램에서 새로 작성한 산출 */
+  own?: boolean;
 }
 
 type Col = 'l' | 'm' | 'e';
 /** 단가산출 산출근거 한 줄 */
-export type CalcLine =
+export type CalcLine = CalcLineBase & { added?: boolean };
+type CalcLineBase =
   | { k: 'text'; text: string; ind: number; bold?: boolean; ref?: string }
   /** 노임 × 인 (÷ 기준수량) */
   | { k: 'labor'; wage: string; n: number; div?: number; per?: string; base: number; ind: number; ref?: string }
@@ -78,7 +81,7 @@ export function calcEval(b: Basis, c: CalcDef): { rows: CalcEvalRow[]; price: Pr
         const w = wages.get(normName(ln.wage));
         const price = w ? wageOf(w) : 0;
         const now = r1((price * ln.n) / (ln.div || 1));
-        add('l', now, ln.base); rows.push({ line: ln, now, price }); break;
+        add('l', now, ln.base); lastLabor = r1(lastLabor + now); rows.push({ line: ln, now, price }); break;
       }
       case 'mat': {
         const price = b.mats[ln.mat]?.price ?? 0;
@@ -102,8 +105,7 @@ export function calcEval(b: Basis, c: CalcDef): { rows: CalcEvalRow[]; price: Pr
         if (ln.final) { rows.push({ line: ln, now: 0 }); break; }
         const cols: Partial<Record<Col, number>> = {};
         let t = 0;
-        for (const k of ['l', 'm', 'e'] as Col[]) if (ln.cols[k] !== undefined) { cols[k] = r1(ln.cols[k]! + seg[k]); t += cols[k]!; }
-        if (cols.l !== undefined) lastLabor = cols.l;
+        for (const k of ['l', 'm', 'e'] as Col[]) if (ln.cols[k] !== undefined || Math.abs(seg[k]) > 1e-9) { cols[k] = r1((ln.cols[k] ?? 0) + seg[k]); t += cols[k]!; }
         rows.push({ line: ln, now: r1(t), cols });
         seg = { l: 0, m: 0, e: 0 };
         break;
