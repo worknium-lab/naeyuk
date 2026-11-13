@@ -5,7 +5,8 @@ import { useAsk } from '../ui/Ask';
 import { useStore, EXAMPLE_ID, migrate, type State } from '../store';
 import { useDocs } from '../docs';
 import { won } from '../engine';
-import { readEstimateXlsx, pickFile } from '../importXlsx';
+import { pickFile } from '../importXlsx';
+import ImportWizard from './ImportWizard';
 
 const KINDS = ['도로', '교량', '교량 보수', '하천', '상하수도', '건축', '토목', '조경', '전기·통신', '기타'];
 
@@ -21,6 +22,7 @@ export default function Main() {
   const [sel, setSel] = useState(s.info.id);
   const [cat, setCat] = useState('전체');
   const [dlg, setDlg] = useState<null | { from: NewFrom }>(null);
+  const [wiz, setWiz] = useState(false);
   const selMeta = projects.find((p) => p.id === sel) ?? projects[0];
   const kinds = useMemo(() => ['전체', ...new Set(projects.map((p) => p.kind || '기타'))], [projects]);
   const shown = projects.filter((p) => cat === '전체' || (p.kind || '기타') === cat);
@@ -62,7 +64,7 @@ export default function Main() {
           <FB icon="trash" label="삭제" onClick={del} />
         </Group>
         <Group label="가져오기">
-          <FB icon="excel" label="엑셀 내역서" title="엑셀 내역서로 새 공사 만들기 (품명·규격·수량·단위·단가 머리글)" onClick={() => setDlg({ from: 'excel' })} />
+          <FB icon="excel" label="엑셀 가져오기" title="엑셀(내역서·일위대가·총괄표·자재·노임·원가계산서)로 새 공사 만들기 — 시트 종류와 열을 맞춰서" onClick={() => setWiz(true)} />
           <FB icon="upload" label="공사 파일" title="공사 파일(.wnx) 가져오기" onClick={importWnx} />
           <FB icon="docs" label="참고 창" title="다른 공사를 참고 창으로 열기" onClick={() => open('refcopy')} />
         </Group>
@@ -135,37 +137,26 @@ export default function Main() {
         </table>
         {!shown.length && <div className="note" style={{ marginTop: 10 }}>이 분류의 공사가 없습니다. [새 공사]로 만드세요.</div>}
       </div>
-      {dlg && <NewProject from={dlg.from} copyOf={selMeta} onClose={() => setDlg(null)} onMade={(id) => { setDlg(null); setSel(id); nav('/estimate'); }} />}
+      {wiz && <ImportWizard onClose={() => setWiz(false)} onDone={(id) => { if (id) { setSel(id); nav('/estimate'); } }} />}
+      {dlg && <NewProject from={dlg.from} copyOf={selMeta} onExcel={() => { setDlg(null); setWiz(true); }} onClose={() => setDlg(null)} onMade={(id) => { setDlg(null); setSel(id); nav('/estimate'); }} />}
     </Shell>
   );
 }
 
-function NewProject({ from: from0, copyOf, onClose, onMade }: { from: NewFrom; copyOf?: { id: string; name: string }; onClose: () => void; onMade: (id: string) => void }) {
+function NewProject({ from: from0, copyOf, onClose, onMade, onExcel }: { from: NewFrom; copyOf?: { id: string; name: string }; onClose: () => void; onMade: (id: string) => void; onExcel: () => void }) {
   const { createProject, toast } = useStore();
   const [from, setFrom] = useState<NewFrom>(from0);
   const [name, setName] = useState(from0 === 'copy' && copyOf ? `${copyOf.name} (복사)` : '');
   const [client, setClient] = useState('');
   const [kind, setKind] = useState('도로');
   const [rate, setRate] = useState('88.000');
-  const [file, setFile] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
   const [err, setErr] = useState('');
   const make = () => {
+    if (from === 'excel') { onExcel(); return; }
     if (!name.trim()) { setErr('공사명을 넣으세요'); return; }
     const bid = Number(rate) / 100;
     if (!(bid > 0 && bid <= 1.2)) { setErr('낙찰률은 % 로 넣으세요 (예: 87.745)'); return; }
     const info = { name: name.trim(), client: client.trim(), kind };
-    if (from === 'excel') {
-      if (!file) { setErr('엑셀 파일을 고르세요'); return; }
-      try {
-        const r = readEstimateXlsx(file.buf, info.name);
-        const id = createProject(info, bid, { design: r.sheet } as State);
-        toast(`${file.name}의 [${r.sheetName}]에서 공종 ${r.groups}개 · 항목 ${r.items}개를 가져왔습니다${r.note.length ? ' — ' + r.note.join(', ') : ''}`);
-        onMade(id);
-      } catch (e) {
-        setErr((e as Error).message || '엑셀을 읽지 못했습니다');
-      }
-      return;
-    }
     const id = createProject(info, bid, from === 'blank' ? 'blank' : from === 'example' ? EXAMPLE_ID : copyOf?.id ?? 'blank');
     toast(`${info.name}을(를) 만들었습니다${from === 'blank' ? ' — 설계내역서에 공종과 항목을 넣으세요' : ''}`);
     onMade(id);
@@ -175,7 +166,7 @@ function NewProject({ from: from0, copyOf, onClose, onMade }: { from: NewFrom; c
       buttons={<>
         <span className="grow" style={{ color: '#C00000' }}>{err}</span>
         <button type="button" className="btn" onClick={onClose}>취소</button>
-        <button type="button" className="btn pri" onClick={make}>만들기</button>
+        <button type="button" className="btn pri" onClick={make}>{from === 'excel' ? '엑셀 고르기…' : '만들기'}</button>
       </>}>
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '110px 1fr', gap: '10px 12px', alignItems: 'center' }}>
         <label htmlFor="np-name">공사명</label><input id="np-name" type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus style={{ height: 28, padding: '0 8px' }} />
@@ -186,17 +177,10 @@ function NewProject({ from: from0, copyOf, onClose, onMade }: { from: NewFrom; c
         <span>시작 방법</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label><input type="radio" checked={from === 'blank'} onChange={() => setFrom('blank')} /> 빈 공사 — 공종 하나와 빈 항목 하나로 시작 (노임·자재·기계경비 자료실 포함)</label>
-          <label><input type="radio" checked={from === 'excel'} onChange={() => setFrom('excel')} /> 엑셀 내역서에서 — 품명·규격·수량·단위·단가 열을 읽어 설계내역서로</label>
+          <label><input type="radio" checked={from === 'excel'} onChange={() => setFrom('excel')} /> 엑셀에서 — 내역서·일위대가·총괄표·단가 시트를 열 맞춤으로 가져오기 (다음 창)</label>
           <label><input type="radio" checked={from === 'copy'} onChange={() => setFrom('copy')} disabled={!copyOf} /> 고른 공사 복사{copyOf ? ` — ${copyOf.name}` : ''}</label>
           <label><input type="radio" checked={from === 'example'} onChange={() => setFrom('example')} /> 예시 공사(용암교) 복사 — 호표·단산까지</label>
         </div>
-        {from === 'excel' && <>
-          <span>엑셀 파일</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button type="button" className="btn" onClick={async () => { const f = await pickFile('.xlsx,.xls'); if (f) { setFile(f); setErr(''); } }}>파일 고르기…</button>
-            <span className="k">{file ? file.name : '고른 파일 없음'}</span>
-          </div>
-        </>}
       </div>
       <div className="hint" style={{ padding: '0 16px' }}>설계내역서를 만들면 착공내역서(설계 × 낙찰률)와 원가계산서가 함께 계산됩니다. 낙찰률은 프로젝트 홈에서 바꿀 수 있습니다.</div>
     </Win>

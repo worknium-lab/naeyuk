@@ -262,3 +262,22 @@ td.ctl { white-space: nowrap; }
 aside.rp { overflow-x: hidden; }
 aside.rp fieldset { min-width: 0; }
 aside.rp fieldset label > select, aside.rp fieldset label > input[type=text] { width: 0; flex: 1 1 auto; min-width: 0; }
+
+/* 엑셀 가져오기 */
+.imp-sh { padding: 6px 10px; border-bottom: 1px solid var(--line2); cursor: pointer; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.imp-sh.on { background: var(--sel); }
+.imp-sh.off b { color: var(--muted); font-weight: 400; }
+.imp-sh select { width: 100%; font-size: 12px; }
+.imp-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px 12px; padding: 8px 10px; border-bottom: 1px solid var(--line2); background: #FBFCFE; }
+.imp-map label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.imp-map label > span { width: 82px; flex: none; color: var(--muted); }
+.imp-map label.need > span { color: #C00000; font-weight: 700; }
+.imp-map select { flex: 1; min-width: 0; font-size: 12px; }
+table.imp-raw { font-size: 11.5px; }
+table.imp-raw td { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.imp-raw td.imp-m { background: #F3F7FC; }
+table.imp-raw tr.imp-h td { background: #DCE6F1; font-weight: 700; }
+table.imp-raw tr.imp-out td { color: #A0A7B1; }
+table.imp-raw td.imp-no { cursor: pointer; color: var(--muted); }
+table.imp-raw td.imp-no:hover { background: var(--sel); color: var(--accent); }
+.imp-tag { font-weight: 400; font-size: 10.5px; color: var(--accent); white-space: nowrap; }
