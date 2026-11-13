@@ -12,20 +12,21 @@ export function BudgetBar({ compact = false }: { compact?: boolean }) {
   const target = docs.subs.reduce((a, x) => a + x.result.target.total, 0);
   const sub = docs.subs.reduce((a, x) => a + x.result.sub.total, 0);
   const segs = [
-    { key: 'sub', label: '하도급액', amt: sub, color: '#1B6B22' },
-    { key: 'target', label: '하도급대상액', amt: target - sub, color: '#4CA830' },
-    { key: 'contract', label: '도급액', amt: contract - target, color: '#149ED6' },
-    { key: 'supplied', label: '관급자재', amt: supplied, color: '#9C2A97' },
-    { key: 'design', label: '설계가', amt: designTotal - contract - supplied, color: '#1A1A1A' },
+    { key: 'sub', label: '하도급액', amt: sub, color: '#163A66', ink: '#fff' },
+    { key: 'target', label: '하도급대상액', amt: target - sub, color: '#2E6BB0', ink: '#fff' },
+    { key: 'contract', label: '도급액', amt: contract - target, color: '#7FA8D6', ink: '#0F2A4A' },
+    { key: 'supplied', label: '관급자재', amt: supplied, color: '#B9C3CF', ink: '#2B3038' },
+    { key: 'design', label: '설계가', amt: designTotal - contract - supplied, color: '#E3E7EC', ink: '#2B3038' },
   ].filter((x) => x.amt > 0);
   const sum = segs.reduce((a, x) => a + x.amt, 0) || 1;
+  const C = { sub: '#163A66', target: '#2E6BB0', contract: '#7FA8D6', supplied: '#B9C3CF', design: '#E3E7EC' };
   const rows: [string, number, string?][] = [
-    ['설계가', designTotal],
+    ['설계가', designTotal, C.design],
     ['총공사비', design.total],
-    ['관급자재대', supplied],
-    [`도급액 (설계 대비 ${design.total ? ((contract / design.total) * 100).toFixed(3) : '0'}%)`, contract],
-    ['하도급대상액', target],
-    [`하도급액 (대상 대비 ${target ? ((sub / target) * 100).toFixed(3) : '0'}%)`, sub],
+    ['관급자재대', supplied, C.supplied],
+    [`도급액 (설계 대비 ${design.total ? ((contract / design.total) * 100).toFixed(3) : '0'}%)`, contract, C.contract],
+    ['하도급대상액', target, C.target],
+    [`하도급액 (대상 대비 ${target ? ((sub / target) * 100).toFixed(3) : '0'}%)`, sub, C.sub],
   ];
   return (
     <div className={'bb' + (compact ? ' compact' : '')}>
@@ -33,16 +34,16 @@ export function BudgetBar({ compact = false }: { compact?: boolean }) {
         {segs.map((x) => {
           const w = (x.amt / sum) * 100;
           return (
-            <div key={x.key} className="bb-seg" style={{ flexBasis: `${w}%`, background: x.color }} title={`${x.label} 구간 ${won(x.amt)}`}>
+            <div key={x.key} className="bb-seg" style={{ flexBasis: `${w}%`, background: x.color, color: x.ink }} title={`${x.label} 구간 ${won(x.amt)}`}>
               <span className={w < 9 ? 'v' : ''}>{x.label}</span>
             </div>
           );
         })}
       </div>
       <div className="bb-list">
-        {rows.map(([k, v], i) => (
+        {rows.map(([k, v, c], i) => (
           <div key={k} className={'bb-r' + (i === 0 ? ' top' : '')}>
-            <span>{k}</span><b>{won(v, { zero: '0' })} 원</b>
+            <span className="bb-k"><i className="bb-sw" style={c ? { background: c } : { background: 'transparent', borderColor: 'transparent' }} />{k}</span><b>{won(v, { zero: '0' })} 원</b>
           </div>
         ))}
       </div>

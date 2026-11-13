@@ -221,9 +221,9 @@ table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
 .mo-i2 .sum { font-weight: 700; color: #1F4E8C; }
 
 /* 설계가·도급액·하도급액 구성 막대 */
-.bb-bar { display: flex; height: 96px; border: 1px solid #1A1A1A; overflow: hidden; }
+.bb-bar { display: flex; height: 96px; border: 1px solid #9AA4B1; border-radius: 3px; overflow: hidden; }
 .bb.compact .bb-bar { height: 72px; }
-.bb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; text-align: center; min-width: 0; border-right: 1px solid rgba(0,0,0,.35); }
+.bb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; text-align: center; min-width: 0; border-right: 1px solid #fff; }
 .bb-seg:last-child { border-right: 0; }
 .bb-seg span { padding: 0 4px; line-height: 1.25; word-break: keep-all; }
 .bb-seg span.v { writing-mode: vertical-rl; letter-spacing: 1px; font-size: 12px; padding: 4px 0; white-space: nowrap; overflow: hidden; max-height: 100%; }
@@ -231,3 +231,5 @@ table.f tr.pbot.chg td:nth-child(2) { font-weight: 700; }
 .bb-r { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; }
 .bb-r b { font-weight: 600; }
 .bb-r.top { border-bottom: 1px dashed #555C66; padding-bottom: 6px; margin-bottom: 4px; }
+.bb-k { display: inline-flex; align-items: center; gap: 8px; }
+.bb-sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(15,42,74,.25); flex: none; }
