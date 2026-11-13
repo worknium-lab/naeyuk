@@ -194,7 +194,7 @@ export default function Change() {
               <tbody>
                 {jeungRows(before.cost, after.cost).map((r) => (
                   <tr key={String(r[0])} className={['순공사원가', '총원가', '도급액', '총공사비', '순 공 사 비'].includes(String(r[0])) ? 'sum' : ''}>
-                    <td>{r[0]}</td><td className="n">{fmtCell(r[1])}</td><td className="n">{fmtCell(r[2])}</td>
+                    <td>{String(r[0] ?? "")}</td><td className="n">{fmtCell(r[1])}</td><td className="n">{fmtCell(r[2])}</td>
                     <td className="n" style={{ color: (r[3] as number) < 0 ? '#C00000' : undefined }}>{r[3] ? fmtCell(r[3]) : '0'}</td>
                   </tr>
                 ))}

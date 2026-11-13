@@ -100,18 +100,54 @@ export function jeungRows(before: CostResult, after: CostResult): Cell[][] {
 /* ---------- 엑셀 (빨강/검정 그대로) ---------- */
 const RED = 'C00000';
 
-function pairSheet(name: string, title: string, head: Cell[][], rows: PairRow[], fmt: ChangeFmt, map: (c: Cell[]) => Cell[] = (c) => c, widths?: number[]): SheetSpec {
+const fl = (x: string) => `INT(ROUND(${x},6))`;
+const num0 = (c: Cell) => (typeof c === 'number' ? c : 0);
+
+function pairSheet(name: string, title: string, head: Cell[][], rows: PairRow[], fmt: ChangeFmt, map: (c: Cell[]) => Cell[] = (c) => c, widths?: number[], formulas = false): SheetSpec {
   const out: Cell[][] = [[title], [legend(fmt)], ...head];
   const rowColor: Record<number, string> = {};
+  const order: ('before' | 'after')[] = fmt.top === 'before' ? ['before', 'after'] : ['after', 'before'];
+  // 엑셀 줄 번호 (1부터) — 수식에서 쓴다
+  const at: { before: number; after: number }[] = [];
+  const cellsOf: Cell[][][] = [];
   for (const r of rows) {
-    if (r.kind === 'blank') { out.push([]); continue; }
-    const order: ('before' | 'after')[] = fmt.top === 'before' ? ['before', 'after'] : ['after', 'before'];
+    if (r.kind === 'blank') { out.push([]); at.push({ before: 0, after: 0 }); cellsOf.push([]); continue; }
+    const pos = { before: 0, after: 0 };
+    const pair: Cell[][] = [];
     for (const w of order) {
       if (colorOf(fmt, w) === 'red') rowColor[out.length] = RED;
-      out.push(map(r[w]));
+      pos[w] = out.length + 1;
+      const c = map(r[w]);
+      pair.push(c);
+      out.push(c);
     }
+    at.push(pos); cellsOf.push(pair);
   }
-  return { name, rows: out, rowColor, widths };
+  if (formulas) {
+    // 항목: 금액 = 수량 × 단가 (원 미만 버림) · 공종/순공사비: 바로 아래 항목·공종의 합
+    rows.forEach((r, i) => {
+      if (r.kind === 'blank') return;
+      for (const w of order) {
+        const R = at[i][w];
+        const c = out[R - 1];
+        if (r.kind === 'item' && typeof c[3] === 'number') {
+          for (const k of [7, 9, 11]) c[k] = num0(c[k]);
+          c[8] = { f: fl(`D${R}*H${R}`), v: num0(c[8]) };
+          c[10] = { f: fl(`D${R}*J${R}`), v: num0(c[10]) };
+          c[12] = { f: fl(`D${R}*L${R}`), v: num0(c[12]) };
+          c[5] = { f: `H${R}+J${R}+L${R}`, v: num0(c[5]) };
+          c[6] = { f: `I${R}+K${R}+M${R}`, v: num0(c[6]) };
+        } else if (r.kind === 'grp' || r.kind === 'ns') {
+          const kids: number[] = [];
+          if (r.kind === 'ns') { for (let k = i + 1; k < rows.length && rows[k].kind !== 'blank'; k++) if (rows[k].depth === 0) kids.push(at[k][w]); }
+          else for (let k = i + 1; k < rows.length && rows[k].kind !== 'blank' && (rows[k].depth ?? 0) > (r.depth ?? 0); k++) if (rows[k].depth === (r.depth ?? 0) + 1) kids.push(at[k][w]);
+          if (!kids.length) continue;
+          for (const [k, col] of [[6, 'G'], [8, 'I'], [10, 'K'], [12, 'M']] as const) c[k] = { f: `SUM(${kids.map((x) => col + x).join(',')})`, v: num0(c[k]) };
+        }
+      }
+    });
+  }
+  return { name, rows: out, rowColor, widths, head: head.map((_, k) => 2 + k), colFmt: { 3: '#,##0.####;"△"#,##0.####;""' }, colAlign: { 0: 'center', 4: 'center' } };
 }
 
 export function changeWorkbook(before: { sheet: Sheet; cost: CostResult }, after: { sheet: Sheet; cost: CostResult }, fmt: ChangeFmt, name: string): SheetSpec[] {
@@ -123,9 +159,9 @@ export function changeWorkbook(before: { sheet: Sheet; cost: CostResult }, after
   const head3: Cell[][] = [['구분', '비목', '금액', '요율', '산출근거']];
   const jeung = jeungRows(before.cost, after.cost);
   return [
-    pairSheet('계약내역서', `계약내역서 — ${name}`, head1, nae, fmt, undefined, [5, 40, 22, 10, 6, 12, 15, 12, 15, 12, 15, 12, 15, 12]),
+    pairSheet('계약내역서', `계약내역서 — ${name}`, head1, nae, fmt, undefined, [5, 40, 22, 10, 6, 12, 15, 12, 15, 12, 15, 12, 15, 12], true),
     pairSheet('내역서총괄표', `내역서총괄표 — ${name}`, head2, chong, fmt, chongCells, [5, 36, 16, 8, 6, 16, 16, 16, 16, 10]),
     pairSheet('계약원가계산서', `계약 원가계산서 — ${name}`, head3, won, fmt, undefined, [6, 34, 16, 10, 30]),
-    { name: '공사비 증감대비', rows: [[`공사비 증·감대비표 — ${name}`], [], ['품명', '당초', '변경', '증·감'], ...jeung], widths: [24, 16, 16, 16] },
+    { name: '공사비 증감대비', rows: [[`공사비 증·감대비표 — ${name}`], [], ['품명', '당초', '변경', '증·감'], ...jeung.map((r, i) => [r[0], r[1], r[2], { f: `C${i + 4}-B${i + 4}`, v: r[3] as number }])], widths: [24, 16, 16, 16] },
   ];
 }

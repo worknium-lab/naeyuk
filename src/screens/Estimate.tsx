@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { exportXlsx } from '../xlsx';
-import { sheetRows, costRows, compareRows } from '../exports';
+import { sheetRows, costRows, compareRows, docBook } from '../exports';
 import { useStore } from '../store';
 import { useAsk } from '../ui/Ask';
 import {
@@ -187,7 +187,7 @@ export default function Estimate() {
           <FB icon="phase" label="차수분개" title="차수공사 분개" to="/phase" />
         </Group>
         <Group label="출력">
-          <FB icon="excel" label="엑셀" title="내역서 + 원가계산서" onClick={() => exportXlsx(`${doc === 'start' ? '착공' : '설계'}내역서 — 국도43호선 용암교.xlsx`, [sheetRows(doc === 'start' ? '착공내역서' : '설계내역서', sheet), costRows('원가계산서', cost)]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
+          <FB icon="excel" label="엑셀" title="내역서 + 원가계산서" onClick={() => exportXlsx(`${doc === 'start' ? '착공' : '설계'}내역서 — 국도43호선 용암교.xlsx`, docBook(doc === 'start' ? '착공내역서' : '설계내역서', sheet, cost)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다'))} />
         </Group>
       </>}
       info={<>

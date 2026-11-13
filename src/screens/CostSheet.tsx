@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { exportXlsx } from '../xlsx';
-import { sheetRows, costRows, compareRows } from '../exports';
+import { sheetRows, costRows, compareRows, docBook } from '../exports';
 import { useStore } from '../store';
 import { useAsk } from '../ui/Ask';
 import { useDocs } from '../docs';
@@ -55,7 +55,7 @@ export default function CostSheet() {
         </Group>
         <Group label="출력">
           <FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} />
-          <FB icon="excel" label="엑셀" onClick={() => exportXlsx(`${d.name} 원가계산서.xlsx`, [costRows(`${d.name} 원가계산서`, d.cost), sheetRows(d.name, d.sheet)]).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
+          <FB icon="excel" label="엑셀" onClick={() => exportXlsx(`${d.name} 원가계산서.xlsx`, docBook(d.name, d.sheet, d.cost)).then((ok) => toast(ok ? '엑셀 파일을 내려받았습니다' : '내려받기가 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 됩니다'))} />
         </Group>
       </>}
       info={<>
