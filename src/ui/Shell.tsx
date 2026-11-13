@@ -166,7 +166,7 @@ function WorkTabs({ set }: { set: TabSet }) {
 
 function SaveBadge() {
   const { saveWhere } = useStore();
-  const t = saveWhere === 'account' ? '내 계정에 저장됨' : saveWhere === 'saving' ? '저장 중…' : '이 브라우저에 저장';
+  const t = saveWhere === 'account' ? '내 계정에 저장됨' : saveWhere === 'saving' ? '저장 중…' : navigator.userAgent.includes('Electron') ? '이 PC에 저장' : '이 브라우저에 저장';
   return <span style={{ opacity: 0.85 }} title="입력한 내용이 저장되는 곳">{t}</span>;
 }
 
