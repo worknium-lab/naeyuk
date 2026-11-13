@@ -1,7 +1,8 @@
 import unitRows from './unitcost.rows.json';
 import calcRows from './calc.rows.json';
+import machineRows from './machine.rows.json';
 import tables from './tables.json';
-import { parseNum, normName, type Basis, type ULine, type UnitDef, type Wage, type Mat } from '../engine';
+import { parseNum, normName, type Basis, type ULine, type UnitDef, type Wage, type Mat, type MachineDef } from '../engine';
 
 type R = string[];
 
@@ -64,7 +65,40 @@ export function basisData(): Basis {
       const p = x[4].match(/노무비의\s*([\d.]+)\s*%/);
       if (p) pctOfLabor = { col: 'm', pct: Number(p[1]) };
     }
-    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]), laborLines, pctOfLabor };
+    // 장비 줄: "기계N참조" 아래의 "노무비 : 39,645 × 8 × 2 대", "노무비 : 47,849 ÷ 6.63"
+    const machineLines: { machine: string; col: 'l' | 'm' | 'e'; mult: number; base: number }[] = [];
+    let mach: string | null = null;
+    for (const x of crow.filter((y) => y[1] === r[1] && y[0] !== 'grp')) {
+      const ref = (x[10] ?? '').match(/기계(\d+)참조/);
+      if (ref) mach = `M${ref[1]}`;
+      if (!mach) continue;
+      const mm = x[4].replace(/\s+/g, '').match(/^(노무비|재료비|경비):([\d,.]+)((?:[×÷][\d.]+)+)/);
+      if (!mm) continue;
+      let mult = 1;
+      for (const op of mm[3].match(/[×÷][\d.]+/g) ?? []) mult = op[0] === '×' ? mult * Number(op.slice(1)) : mult / Number(op.slice(1));
+      machineLines.push({ machine: mach, col: mm[1] === '노무비' ? 'l' : mm[1] === '재료비' ? 'm' : 'e', mult, base: parseNum(mm[2]) });
+    }
+    return { no: `단산${r[1].slice(1)}`, name, unit, l: parseNum(r[6]), m: parseNum(r[7]), e: parseNum(r[8]), laborLines, pctOfLabor, machineLines };
   });
-  return { wages: W, mats, units, calcs };
+  // 기계경비 (시간당)
+  const machines: MachineDef[] = [];
+  for (const r of machineRows as R[]) {
+    if (r[0] === 'grp') { machines.push({ no: r[1], name: r[2].replace(/^\d+\.\s*/, ''), spec: r[3], losses: [], fuel: '', fuelQty: 0, sundry: 0, operator: '' }); continue; }
+    const m = machines[machines.length - 1];
+    const t = r[4].replace(/\s+/g, '');
+    if (r[2].includes('손')) {
+      const x = t.match(/^([\d,]+)￦×([\d,]+)×10/);
+      if (x) m.losses.push({ name: r[2].replace(/\s+/g, ' '), price: parseNum(x[1]), coef: parseNum(x[2]) });
+      if (r[9]) m.note = r[9];
+    } else if (r[2].includes('주연료')) {
+      const x = t.match(/^([\d.]+)ℓ×/);
+      m.fuel = r[3]; m.fuelQty = x ? Number(x[1]) : 0;
+    } else if (r[2].includes('잡')) {
+      const x = t.match(/^([\d.]+)%/);
+      m.sundry = x ? Number(x[1]) : 0;
+    } else if (W[normName(r[2])]) {
+      m.operator = r[2];
+    }
+  }
+  return { wages: W, mats, units, calcs, machines, fuel: { 경유: 1_832, 휘발유: 1_762 } };
 }

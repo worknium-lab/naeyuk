@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
 import { PROJECT } from '../data/project';
-import { useStore } from '../store';
+import { useStore, migrate } from '../store';
 import { useAsk, canPrint } from './Ask';
 import { saveFile } from '../platform';
 
@@ -42,7 +42,7 @@ function Menu() {
     try {
       const j = JSON.parse(await f.text());
       if (j.app !== 'naeyuk' || !j.state) throw new Error('형식');
-      set((cur) => ({ ...cur, ...j.state }));
+      set((cur) => migrate({ ...cur, ...j.state }));
       toast(`${f.name}을(를) 열었습니다`);
     } catch {
       toast('이 프로그램에서 저장한 공사 파일(.wnx)이 아닙니다');

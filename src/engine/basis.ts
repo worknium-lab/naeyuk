@@ -35,26 +35,43 @@ export interface CalcDef {
   laborLines?: { wage: string; mult: number }[];
   /** 노무비의 % 를 다른 비목에 넣는 줄 (공구손료 등) */
   pctOfLabor?: { col: 'm' | 'e'; pct: number };
+  /** 산출근거의 장비 줄 — 시간당 기계경비 × 배수 */
+  machineLines?: { machine: string; col: 'l' | 'm' | 'e'; mult: number; base: number }[];
 }
 
-/** 단가산출 값 — 노임이 갱신되면 연결된 노임 줄의 차이를 반영 */
+/** 단가산출 값 — 연결된 노임 줄·장비 줄이 바뀌면 그 차이를 더한다 */
 export function calcPrice(b: Basis, c: CalcDef): Price {
-  if (!c.laborLines?.length) return { l: c.l, m: c.m, e: c.e };
+  if (!c.laborLines?.length && !c.machineLines?.length) return { l: c.l, m: c.m, e: c.e };
   const wages = new Map(Object.values(b.wages).map((w) => [normName(w.name), w]));
-  let dl = 0;
-  for (const ln of c.laborLines) {
+  let dl = 0, dm = 0, de = 0;
+  for (const ln of c.laborLines ?? []) {
     const w = wages.get(normName(ln.wage));
     if (w) dl += (wageOf(w) - w.old) * ln.mult;
   }
-  const r1 = (x: number) => Math.floor(x * 10 + 1e-6) / 10;
   dl = r1(dl);
-  const l = floor(c.l + dl);
-  let m = c.m, e = c.e;
   if (c.pctOfLabor) {
-    const d = floor(r1((dl * c.pctOfLabor.pct) / 100));
-    if (c.pctOfLabor.col === 'm') m += d; else e += d;
+    const d = r1((dl * c.pctOfLabor.pct) / 100);
+    if (c.pctOfLabor.col === 'm') dm += d; else de += d;
   }
-  return { l, m, e };
+  for (const ml of c.machineLines ?? []) {
+    const md = b.machines?.find((x) => x.no === ml.machine);
+    if (!md) continue;
+    const d = r1((machinePrice(b, md).total[ml.col] - ml.base) * ml.mult);
+    if (ml.col === 'l') dl += d; else if (ml.col === 'm') dm += d; else de += d;
+  }
+  return { l: floor(c.l + dl), m: floor(c.m + dm), e: floor(c.e + de) };
+}
+
+/** 기계경비 (시간당) — 손료 + 연료·잡품 + 운전사 노임 */
+export interface MachineDef {
+  no: string; name: string; spec: string;
+  /** 손료: 취득가격 × 시간당 손료계수(×10⁻⁷) — 장비가 둘이면 두 줄 */
+  losses: { name: string; price: number; coef: number }[];
+  fuel: string;      // 경유 · 휘발유
+  fuelQty: number;   // ℓ/hr
+  sundry: number;    // 잡품 (주연료의 %)
+  operator: string;  // 운전사 노임 직종
+  note?: string;
 }
 
 export interface Basis {
@@ -62,6 +79,24 @@ export interface Basis {
   mats: Record<string, Mat>;
   units: UnitDef[];
   calcs: CalcDef[];
+  machines?: MachineDef[];
+  /** 연료 단가 (기계경비 적용기준) */
+  fuel?: Record<string, number>;
+}
+
+const r1 = (x: number) => Math.floor(x * 10 + 1e-6) / 10;
+
+export interface MachineCalc { def: MachineDef; loss: number; fuelAmt: number; sundryAmt: number; op: number; total: Price }
+
+/** 시간당 기계경비: 손료(경비) · 연료+잡품(재료비) · 운전사 노임 × 1/8 × 16/12 × 25/20 (노무비) */
+export function machinePrice(b: Basis, m: MachineDef): MachineCalc {
+  const wages = new Map(Object.values(b.wages).map((w) => [normName(w.name), w]));
+  const w = wages.get(normName(m.operator));
+  const loss = m.losses.reduce((a, x) => a + r1(x.price * x.coef * 1e-7), 0);
+  const fuelAmt = r1(m.fuelQty * (b.fuel?.[m.fuel] ?? 0));
+  const sundryAmt = r1((fuelAmt * m.sundry) / 100);
+  const op = r1((w ? wageOf(w) : 0) * (1 / 8) * (16 / 12) * (25 / 20));
+  return { def: m, loss, fuelAmt, sundryAmt, op, total: { l: floor(op), m: floor(fuelAmt + sundryAmt), e: floor(loss) } };
 }
 
 export interface Price { l: number; m: number; e: number }

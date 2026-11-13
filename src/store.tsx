@@ -93,10 +93,28 @@ function initial(): State {
   };
 }
 
+/** 예전에 저장한 상태에 새로 생긴 근거 정보(기계경비, 단산의 노임·장비 줄 등)를 채워 넣는다 */
+export function migrate(st: State): State {
+  const fresh = basisData();
+  const b = st.basis ?? fresh;
+  return {
+    ...st,
+    basis: {
+      ...b,
+      machines: b.machines ?? fresh.machines,
+      fuel: b.fuel ?? fresh.fuel,
+      calcs: b.calcs.map((c) => {
+        const f = fresh.calcs.find((x) => x.no === c.no);
+        return f ? { ...c, laborLines: c.laborLines ?? f.laborLines, pctOfLabor: c.pctOfLabor ?? f.pctOfLabor, machineLines: c.machineLines ?? f.machineLines } : c;
+      }),
+    },
+  };
+}
+
 function load(): State {
   try {
     const s = localStorage.getItem(KEY);
-    if (s) return { ...initial(), ...JSON.parse(s) };
+    if (s) return migrate({ ...initial(), ...JSON.parse(s) });
   } catch {
     /* 저장된 값이 없거나 깨졌으면 처음 값 */
   }
@@ -144,7 +162,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const got = await r.load();
         if (got) {
           for (const [k, v] of Object.entries(got)) written.current[k] = JSON.stringify(v);
-          setS((cur) => ({ ...cur, ...(got as Partial<State>) }));
+          setS((cur) => migrate({ ...cur, ...(got as Partial<State>) }));
         }
         remote.current = r;
         setSaveWhere('account');

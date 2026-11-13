@@ -3,10 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { useStore } from '../store';
-import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice } from '../engine';
+import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, machinePrice, type MachineDef } from '../engine';
 import { useDocs } from '../docs';
 import calcRows from '../data/calc.rows.json';
-import machineRows from '../data/machine.rows.json';
 import tables from '../data/tables.json';
 
 /* ---------- 묶음 접기/펼치기 공통 ---------- */
@@ -218,7 +217,7 @@ export function Calc() {
                     const c = s.basis.calcs.find((x) => x.no === no)!;
                     const setC = (f: 'l' | 'm' | 'e', v: number) => set((st) => ({ ...st, basis: { ...st.basis, calcs: st.basis.calcs.map((x) => (x.no === no ? { ...x, [f]: v } : x)) } }));
                     return <>
-                      <td className="n" id={no} title={c.laborLines?.length ? `노임 줄 ${c.laborLines.length}개 연결` : '고정값'}>{(() => { const p = calcPrice(s.basis, c); const t = p.l + p.m + p.e; const t0 = c.l + c.m + c.e; return <>{won(t)}{t !== t0 && <div className="cf">노임 갱신 +{won(t - t0)}</div>}</>; })()}</td>
+                      <td className="n" id={no} title={c.laborLines?.length ? `노임 줄 ${c.laborLines.length}개 연결` : '고정값'}>{(() => { const p = calcPrice(s.basis, c); const t = p.l + p.m + p.e; const t0 = c.l + c.m + c.e; return <>{won(t)}{t !== t0 && <div className="cf">근거 갱신 {t - t0 > 0 ? "+" : ""}{won(t - t0, { tri: false })}</div>}</>; })()}</td>
                       {(['l', 'm', 'e'] as const).map((f) => <td key={f} className="n"><input className="q" style={{ width: 84 }} value={c[f]} onClick={(e) => e.stopPropagation()} onChange={(e) => setC(f, Number(e.target.value) || 0)} /></td>)}
                     </>;
                   })() : [5, 6, 7, 8].map((k) => <td key={k} className="n">{r[k]}</td>)}
@@ -242,37 +241,75 @@ export function Calc() {
 }
 
 /* ---------- 기계경비 ---------- */
-type MRow = [string, string, string, string, string, string, string, string, string, string];
-
 export function Machine() {
-  const { toast } = useStore();
-  const rows = machineRows as MRow[];
-  const groups = rows.filter((r) => r[0] === 'grp').map((r) => r[1]);
-  const fold = useFold(groups, ['M1', 'M2']);
+  const { s, set, design, toast } = useStore();
+  const ms = s.basis.machines ?? [];
+  const fold = useFold(ms.map((m) => m.no), ['M1', 'M2']);
+  const fuel = s.basis.fuel ?? {};
+  const upd = (no: string, patch: Partial<MachineDef>) => set((st) => ({ ...st, basis: { ...st.basis, machines: (st.basis.machines ?? []).map((m) => (m.no === no ? { ...m, ...patch } : m)) } }));
+  const setFuel = (k: string, v: number) => set((st) => ({ ...st, basis: { ...st.basis, fuel: { ...(st.basis.fuel ?? {}), [k]: v } } }));
+  const f1 = (x: number) => x.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+  const usedBy = (no: string) => s.basis.calcs.filter((c) => c.machineLines?.some((x) => x.machine === no)).map((c) => c.no);
   return (
     <Shell
       doc="기계경비"
       toolbar={<>
-        <Group label="장비"><FB icon="machine" label="장비" onClick={() => toast('Main에서 장비 불러오기')} /><FB icon="form" label="공식" onClick={() => toast('기계경비 공식 등록·수정')} /></Group>
-        <Group label="기준"><FB icon="rate" label="적용기준" primary onClick={() => toast('적용기준: 경유 1,832 · 휘발유 1,762 · 운전사 노임 2026 하반기')} /><FB icon="recalc" label="손료개정" onClick={() => toast("'22年 개정 손료계수 반영")} /></Group>
-        <Group label="기타"><FB icon="search" label="사용처" onClick={() => toast('굴삭기 0.2㎥: 단산2 폐기물상차에서 사용')} /><FB icon="print" label="인쇄" onClick={() => (canPrint() ? window.print() : toast('이 화면에서는 인쇄 창이 막혀 있습니다 — 내 PC에서 npm run dev로 띄우면 인쇄됩니다'))} /></Group>
+        <Group label="장비"><FB icon="machine" label="장비" onClick={() => toast('Main에서 장비 불러오기 (데스크톱 판)')} /></Group>
+        <Group label="기준"><FB icon="rate" label="적용기준" primary onClick={() => document.getElementById('fuel')?.scrollIntoView()} /></Group>
+        <Group label="기타"><FB icon="search" label="사용처" onClick={() => toast(ms.map((m) => `${m.name}: ${usedBy(m.no).join(', ') || '없음'}`).join(' · '))} /></Group>
       </>}
-      info={<FoldBar fold={fold} extra={<><div style={{ flex: 1 }} /><span className="k">시간당 기계경비 · 운전사 노임 × 1/8 × 16/12 × 25/20</span></>} />}
+      info={<FoldBar fold={fold} extra={<><div style={{ flex: 1 }} /><span className="k">노란 칸을 고치면 이 장비를 쓰는 단가산출 → 호표 → 내역서까지 다시 계산됩니다 · 운전사 노임은 노임단가에 연결</span></>} />}
+      right={
+        <aside className="rp" aria-label="기계경비 적용기준" id="fuel" style={{ width: 260 }}>
+          <h2>기계경비 적용기준</h2>
+          <table className="f" style={{ width: '100%' }}>
+            <tbody>
+              {Object.entries(fuel).map(([k, v]) => (
+                <tr key={k}><td>{k}</td><td className="n"><input className="q" style={{ width: 80 }} value={v} onChange={(e) => setFuel(k, Number(e.target.value) || 0)} /> 원/ℓ</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="hint">운전사 노임 = 노임 × 1/8 × 16/12 × 25/20 (시간당, 상여금·휴일 반영). 노임단가를 갱신하면 함께 바뀝니다.</div>
+          {design && null}
+        </aside>
+      }
     >
       <div style={{ padding: 10 }}>
         <table className="f" style={{ width: '100%' }}>
-          <thead><tr><th style={{ width: 26 }} /><th>장비 · 항목</th><th>규 격</th><th>산 출 근 거</th><th>시간당 합계</th><th>노무비</th><th>재료비</th><th>경 비</th><th>비 고</th></tr></thead>
+          <thead><tr><th style={{ width: 26 }} /><th>장비 · 항목</th><th>규 격</th><th>산 출 근 거</th><th>시간당 합계</th><th>노무비</th><th>재료비</th><th>경 비</th><th>사용처</th></tr></thead>
           <tbody>
-            {rows.map((r, i) => {
-              const grp = r[0] === 'grp';
-              if (!grp && !fold.isOpen(r[1])) return null;
+            {ms.map((m) => {
+              const c = machinePrice(s.basis, m);
+              const t = c.total;
+              const op = fold.isOpen(m.no);
+              const wage = Object.values(s.basis.wages).find((w) => normName(w.name) === normName(m.operator));
               return (
-                <tr key={i} className={grp ? 'g' : ''}>
-                  <td className="c">{grp && <Tg open={fold.isOpen(r[1])} onClick={() => fold.toggle(r[1])} label={r[2]} />}</td>
-                  <td style={{ paddingLeft: grp ? 6 : 20 }}>{r[2]}</td><td>{r[3]}</td><td>{r[4]}</td>
-                  {[5, 6, 7, 8].map((k) => <td key={k} className="n">{r[k]}</td>)}
-                  <td>{r[9]}</td>
-                </tr>
+                <Fragment key={m.no}>
+                  <tr className="g">
+                    <td className="c"><Tg open={op} onClick={() => fold.toggle(m.no)} label={m.name} /></td>
+                    <td>{m.no.slice(1)}. {m.name}</td><td>{m.spec}</td><td />
+                    <td className="n">{won(t.l + t.m + t.e)}</td><td className="n">{won(t.l)}</td><td className="n">{won(t.m)}</td><td className="n">{won(t.e)}</td>
+                    <td>{usedBy(m.no).join(', ')}</td>
+                  </tr>
+                  {op && <>
+                    {m.losses.map((x, k) => (
+                      <tr key={'l' + k}>
+                        <td /><td style={{ paddingLeft: 20 }}>{x.name}</td><td>{m.note ?? ''}</td>
+                        <td><input className="q" style={{ width: 110 }} value={x.price} onChange={(e) => upd(m.no, { losses: m.losses.map((y, kk) => (kk === k ? { ...y, price: Number(e.target.value) || 0 } : y)) })} /> ￦ × <input className="q" style={{ width: 54 }} value={x.coef} onChange={(e) => upd(m.no, { losses: m.losses.map((y, kk) => (kk === k ? { ...y, coef: Number(e.target.value) || 0 } : y)) })} /> × 10⁻⁷</td>
+                        <td className="n">{f1(Math.floor(x.price * x.coef * 1e-7 * 10 + 1e-6) / 10)}</td><td /><td /><td className="n">{f1(Math.floor(x.price * x.coef * 1e-7 * 10 + 1e-6) / 10)}</td><td />
+                      </tr>
+                    ))}
+                    <tr><td /><td style={{ paddingLeft: 20 }}>주연료</td><td>{m.fuel}</td>
+                      <td><input className="q" style={{ width: 54 }} value={m.fuelQty} onChange={(e) => upd(m.no, { fuelQty: Number(e.target.value) || 0 })} /> ℓ × {won(fuel[m.fuel] ?? 0)}</td>
+                      <td className="n">{f1(c.fuelAmt)}</td><td /><td className="n">{f1(c.fuelAmt)}</td><td /><td /></tr>
+                    <tr><td /><td style={{ paddingLeft: 20 }}>잡품</td><td>주연료의</td>
+                      <td><input className="q" style={{ width: 44 }} value={m.sundry} onChange={(e) => upd(m.no, { sundry: Number(e.target.value) || 0 })} /> % × {f1(c.fuelAmt)}</td>
+                      <td className="n">{f1(c.sundryAmt)}</td><td /><td className="n">{f1(c.sundryAmt)}</td><td /><td /></tr>
+                    <tr><td /><td style={{ paddingLeft: 20 }}>{m.operator}</td><td>{wage?.use === 'cur' ? '2026년(하)' : '2022년(상)'}</td>
+                      <td>1 인 × {won(wage ? wageOf(wage) : 0)} × 1/8 × 16/12 × 25/20</td>
+                      <td className="n">{f1(c.op)}</td><td className="n">{f1(c.op)}</td><td /><td /><td /></tr>
+                  </>}
+                </Fragment>
               );
             })}
           </tbody>
@@ -391,7 +428,7 @@ export function Labor() {
             <div className="r"><span>선택 직종 갱신 후</span><b>{won(sim)}</b></div>
             <div className="r"><span>차이</span><b>{sim - before >= 0 ? '+' : ''}{won(sim - before, { tri: false, zero: '0' })}</b></div>
           </div>
-          <div className="hint">노임을 쓰는 일위대가 호표 → 내역서 단가 → 원가계산서까지 다시 계산됩니다. 단가산출(단산)은 산출근거에서 읽은 노임 줄만큼 반영됩니다 (기계경비는 아직 고정값).</div>
+          <div className="hint">노임을 쓰는 일위대가 호표 → 내역서 단가 → 원가계산서까지 다시 계산됩니다. 단가산출(단산)은 산출근거에서 읽은 노임 줄만큼 반영됩니다 (기계경비 운전사 노임도 함께).</div>
           <button type="button" className="btn pri" onClick={() => { apply('cur'); toast('일괄 갱신했습니다'); }}>선택 직종 갱신</button>
           <button type="button" className="btn" onClick={() => apply('old')}>선택 직종 되돌리기</button>
         </aside>
