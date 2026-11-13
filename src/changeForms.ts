@@ -1,5 +1,6 @@
 import { flatten, findLine, lineAmount, unitTotal, sectionAmount, type CostResult, type Line, type Sheet } from './engine';
 import type { Cell, SheetSpec } from './xlsx';
+import { basisFormula, fl, qs } from './exports';
 
 /**
  * 설계변경 양식 (계약내역서 · 내역서총괄표 · 계약원가계산서 · 공사비 증감대비표).
@@ -17,6 +18,8 @@ export interface PairRow {
   edit?: { id: string; isNew: boolean; qty: number };
   depth?: number;
   changed?: boolean;
+  /** 내역서 구역 (순공사비 · 관급 · 폐기물) */
+  sec?: string;
 }
 
 export function colorOf(fmt: ChangeFmt, which: 'before' | 'after'): 'red' | 'black' {
@@ -54,7 +57,7 @@ export function naeRows(before: Sheet, after: Sheet, opts: { groupsOnly?: boolea
       const b = bsec ? findLine(bsec.lines, l.id) : undefined;
       const changed = !b || lineAmount(b).t !== r.amount.t;
       out.push({
-        key: l.id, kind: l.children ? 'grp' : 'item', depth: r.depth, changed,
+        key: l.id, kind: l.children ? 'grp' : 'item', depth: r.depth, changed, sec: sec.section,
         before: lineCells(b, l, r.depth), after: lineCells(l, l, r.depth),
         edit: l.children ? undefined : { id: l.id, isNew: !b, qty: l.qty },
       });
@@ -79,6 +82,14 @@ export function wonRows(before: CostResult, after: CostResult): PairRow[] {
   });
 }
 
+/** 공사비 증·감대비표의 각 줄이 가리키는 원가 비목 (첫 줄은 순공사비) */
+export function jeungKeys(before: CostResult, after: CostResult): string[] {
+  const out = ['ns'];
+  for (const k of JEUNG_PICK) { const r = before.rows.find((x) => x.key === k); if (!r) continue; if (!before.get(r.key) && !after.get(r.key)) continue; out.push(k); }
+  return out;
+}
+const JEUNG_PICK = ['A', 'B', 'exp', 'il', 'ind', 'emp', 'health', 'pension', 'care', 'retire', 'machGuar', 'safety', 'env', 'subGuar', 'etc', 'C', 'D', 'gen', 'profit', 'waste', 'H', 'vat', 'J', 'supplied', 'L'];
+
 /** 공사비 증·감대비표 */
 export function jeungRows(before: CostResult, after: CostResult): Cell[][] {
   const pick = ['A', 'B', 'exp', 'il', 'ind', 'emp', 'health', 'pension', 'care', 'retire', 'machGuar', 'safety', 'env', 'subGuar', 'etc', 'C', 'D', 'gen', 'profit', 'waste', 'H', 'vat', 'J', 'supplied', 'L'];
@@ -100,10 +111,9 @@ export function jeungRows(before: CostResult, after: CostResult): Cell[][] {
 /* ---------- 엑셀 (빨강/검정 그대로) ---------- */
 const RED = 'C00000';
 
-const fl = (x: string) => `INT(ROUND(${x},6))`;
 const num0 = (c: Cell) => (typeof c === 'number' ? c : 0);
 
-function pairSheet(name: string, title: string, head: Cell[][], rows: PairRow[], fmt: ChangeFmt, map: (c: Cell[]) => Cell[] = (c) => c, widths?: number[], formulas = false): SheetSpec {
+function pairSheet(name: string, title: string, head: Cell[][], rows: PairRow[], fmt: ChangeFmt, map: (c: Cell[]) => Cell[] = (c) => c, widths?: number[], formulas = false): SheetSpec & { rowAt: Record<string, { before: number; after: number }> } {
   const out: Cell[][] = [[title], [legend(fmt)], ...head];
   const rowColor: Record<number, string> = {};
   const order: ('before' | 'after')[] = fmt.top === 'before' ? ['before', 'after'] : ['after', 'before'];
@@ -147,7 +157,9 @@ function pairSheet(name: string, title: string, head: Cell[][], rows: PairRow[],
       }
     });
   }
-  return { name, rows: out, rowColor, widths, head: head.map((_, k) => 2 + k), colFmt: { 3: '#,##0.####;"△"#,##0.####;""' }, colAlign: { 0: 'center', 4: 'center' } };
+  const rowAt: Record<string, { before: number; after: number }> = {};
+  rows.forEach((r, i) => { if (r.kind !== 'blank') rowAt[r.key] = at[i]; });
+  return { rowAt, name, rows: out, rowColor, widths, head: head.map((_, k) => 2 + k), colFmt: { 3: '#,##0.####;"△"#,##0.####;""' }, colAlign: { 0: 'center', 4: 'center' } };
 }
 
 export function changeWorkbook(before: { sheet: Sheet; cost: CostResult }, after: { sheet: Sheet; cost: CostResult }, fmt: ChangeFmt, name: string): SheetSpec[] {
@@ -158,10 +170,62 @@ export function changeWorkbook(before: { sheet: Sheet; cost: CostResult }, after
   const won = wonRows(before.cost, after.cost);
   const head3: Cell[][] = [['구분', '비목', '금액', '요율', '산출근거']];
   const jeung = jeungRows(before.cost, after.cost);
+  const N = { nae: '계약내역서', chong: '내역서총괄표', won: '계약원가계산서', jeung: '공사비 증감대비' };
+  const naeS = pairSheet(N.nae, `계약내역서 — ${name}`, head1, nae, fmt, undefined, [5, 40, 22, 10, 6, 12, 15, 12, 15, 12, 15, 12, 15, 12], true);
+  const chongS = pairSheet(N.chong, `내역서총괄표 — ${name}`, head2, chong, fmt, chongCells, [5, 36, 16, 8, 6, 16, 16, 16, 16, 10]);
+  const wonS = pairSheet(N.won, `계약 원가계산서 — ${name}`, head3, won, fmt, undefined, [6, 34, 16, 10, 30]);
+  const sides = ['before', 'after'] as const;
+  const val = (c: Cell) => (typeof c === 'object' && c !== null ? c.v : c);
+  const nq = qs(N.nae);
+  // 총괄표: 금액 칸은 계약내역서의 같은 줄
+  for (const r of chong) for (const w of sides) {
+    const R = chongS.rowAt[r.key]?.[w], src = naeS.rowAt[r.key]?.[w];
+    if (!R || !src) continue;
+    const row = chongS.rows[R - 1];
+    ([[5, 'G'], [6, 'I'], [7, 'K'], [8, 'M']] as const).forEach(([k, col]) => { const v = val(row[k]); if (v !== '' && v != null) row[k] = { f: `${nq}!${col}${src}`, v: v as number }; });
+  }
+  // 계약원가계산서: 순공사비는 계약내역서, 나머지는 산출근거 수식
+  const roots = (secName: string, w: 'before' | 'after') => nae.filter((r) => r.sec === secName && r.depth === 0).map((r) => naeS.rowAt[r.key]?.[w]).filter(Boolean);
+  for (const w of sides) {
+    const cost = w === 'before' ? before.cost : after.cost;
+    const at = new Map<string, string>();
+    for (const r of cost.rows) { const R = wonS.rowAt[r.key]?.[w]; if (R) at.set(r.no, `C${R}`); }
+    const ns = naeS.rowAt['ns']?.[w];
+    for (const r of cost.rows) {
+      const R = wonS.rowAt[r.key]?.[w];
+      if (!R || r.amount === null) continue;
+      const row = wonS.rows[R - 1];
+      const LINK: Record<string, string | undefined> = {
+        indMat: ns ? `${nq}!K${ns}` : undefined, dl: ns ? `${nq}!I${ns}` : undefined, exp: ns ? `${nq}!M${ns}` : undefined,
+        supplied: roots('supplied', w).length ? `SUM(${roots('supplied', w).map((x) => `${nq}!G${x}`).join(',')})` : undefined,
+        waste: roots('waste', w).length ? `SUM(${roots('waste', w).map((x) => `${nq}!G${x}`).join(',')})` : undefined,
+      };
+      if (LINK[r.key]) { row[2] = { f: LINK[r.key], v: r.amount }; continue; }
+      if (!r.basis) continue;
+      // 두 줄 양식이라 범위(6 ~ 18)는 같은 쪽 줄만 더하도록 풀어 쓴다
+      const basis = r.basis.replace(/\(\s*(\w+)\s*~\s*(\w+)\s*\)/, (_m, x, y) => {
+        const i0 = cost.rows.findIndex((q) => q.no === x), i1 = cost.rows.findIndex((q) => q.no === y);
+        return i0 < 0 || i1 < 0 ? _m : '(' + cost.rows.slice(i0, i1 + 1).map((q) => q.no).join(' + ') + ')';
+      });
+      const f = basisFormula(basis, (no) => at.get(no));
+      if (f) row[2] = { f: r.total ? f.replace(/^\((.*)\)$/, '$1') : fl(f), v: r.amount };
+    }
+  }
+  // 증감대비: 당초·변경은 계약원가계산서(순공사비는 계약내역서)
+  const keys = jeungKeys(before.cost, after.cost);
+  const wq = qs(N.won);
+  const jrows: Cell[][] = jeung.map((r, i) => {
+    const k = keys[i];
+    const R = i + 4;
+    const pick = (w: 'before' | 'after', v: Cell): Cell => {
+      if (k === 'ns') { const x = naeS.rowAt['ns']?.[w]; return x ? { f: `${nq}!G${x}`, v: v as number } : v; }
+      const x = wonS.rowAt[k]?.[w];
+      return x ? { f: `${wq}!C${x}`, v: v as number } : v;
+    };
+    return [r[0], pick('before', r[1]), pick('after', r[2]), { f: `C${R}-B${R}`, v: r[3] as number }];
+  });
   return [
-    pairSheet('계약내역서', `계약내역서 — ${name}`, head1, nae, fmt, undefined, [5, 40, 22, 10, 6, 12, 15, 12, 15, 12, 15, 12, 15, 12], true),
-    pairSheet('내역서총괄표', `내역서총괄표 — ${name}`, head2, chong, fmt, chongCells, [5, 36, 16, 8, 6, 16, 16, 16, 16, 10]),
-    pairSheet('계약원가계산서', `계약 원가계산서 — ${name}`, head3, won, fmt, undefined, [6, 34, 16, 10, 30]),
-    { name: '공사비 증감대비', rows: [[`공사비 증·감대비표 — ${name}`], [], ['품명', '당초', '변경', '증·감'], ...jeung.map((r, i) => [r[0], r[1], r[2], { f: `C${i + 4}-B${i + 4}`, v: r[3] as number }])], widths: [24, 16, 16, 16] },
+    naeS, chongS, wonS,
+    { name: N.jeung, rows: [[`공사비 증·감대비표 — ${name}`], [], ['품명', '당초', '변경', '증·감'], ...jrows], widths: [24, 16, 16, 16] },
   ];
 }
