@@ -75,6 +75,7 @@ export function sheetRows(title: string, sheet: Sheet, sheetName = '내역서', 
 
 /** "(A + 4 + 6) × 0.009" 같은 산출근거를 엑셀 수식으로 */
 export function basisFormula(basis: string, ref: (no: string) => string | undefined): string | null {
+  if (/[가-힣]/.test(basis)) return null;
   let ok = true;
   let f = basis.replace(/(\d+\.\d+)|(\d{1,3}(?:,\d{3})+)|\b([A-L])\b|\b(\d{1,2})\b/g, (m, dec, comma, letter, int) => {
     if (dec) return dec;
@@ -122,7 +123,12 @@ export function costRows(title: string, c: CostResult, compare?: { label: string
     if (r.amount !== null) {
       const lk = link && LINKED[r.key] ? link[LINKED[r.key]] : undefined;
       if (lk) amt = { f: lk, v: r.amount };
-      else if (r.key === 'profit' && opts.target) {
+      else if (r.key === 'profit' && r.roundAdj !== undefined && !opts.target) {
+        // 이윤 = 원래 이윤 수식 + TRUNC(단수정리값 / 1.1, 0)
+        const auto = (r.basis ?? '').match(/×\s*[\d.]+\s*([+−-])\s*([\d,]+)\s*\+\s*TRUNC/);
+        const base = basisFormula((r.basis ?? '').replace(/\s*\+\s*TRUNC.*$/, '').replace(/\s*[+−-]\s*[\d,]+$/, ''), (no) => at.get(no));
+        if (base) amt = { f: `${fl(base)}${auto ? (auto[1] === '+' ? '+' : '-') + auto[2].replace(/,/g, '') : ''}+TRUNC(${r.roundAdj}/1.1,0)`, v: r.amount };
+      } else if (r.key === 'profit' && opts.target) {
         // 이윤 = 목표 공급가액 − (D + E + G) : 끝수 정리 차이를 이윤에서 정산
         const base = basisFormula((r.basis ?? '').replace(/\s*[+−-]\s*[\d,]+$/, ''), (no) => at.get(no));
         const D = at.get('D'), E = at.get('E'), G = at.get('G');

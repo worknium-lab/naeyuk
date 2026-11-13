@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { useStore } from './store';
+import { useStore, FIXED_DEFAULT } from './store';
 import {
   costSheet, phaseSheet, progressSheet, sectionAmount, buildSubcontract, changeSheet,
-  type CostResult, type Sheet,
+  type CostResult, type Sheet, type CostKey,
 } from './engine';
 
 export interface DocInfo {
@@ -16,7 +16,7 @@ export interface DocInfo {
 export function useDocs() {
   const { s, start, design, contract } = useStore();
   return useMemo(() => {
-    const mk = (key: string, name: string, sheet: Sheet, opts: { targetSupply?: number } = {}): DocInfo => ({
+    const mk = (key: string, name: string, sheet: Sheet, opts: { targetSupply?: number; fixed?: Partial<Record<CostKey, number>> } = {}): DocInfo => ({
       key, name, sheet,
       cost: costSheet({
         direct: sectionAmount(sheet, 'main'),
@@ -24,10 +24,16 @@ export function useDocs() {
         supplied: sectionAmount(sheet, 'supplied').t,
         rates: s.rates,
         exclude: new Set(s.exclude ?? []),
+        roundAdj: s.roundAdj?.[key] ?? 0,
         ...opts,
       }),
     });
-    const list: DocInfo[] = [mk('design', '설계내역서', design), mk('start', '착공내역서', start), mk('change', `설계변경 내역서 ${s.change.name}`, changeSheet(start, s.change, s.bidRate))];
+    const d0 = mk('design', '설계내역서', design);
+    // 설계가 고정 비목: 착공·설계변경도 설계 금액 그대로 (설계변경은 변경된 설계 기준)
+    const keys = s.fixedKeys ?? FIXED_DEFAULT;
+    const fixedOf = (c: CostResult) => Object.fromEntries(keys.filter((k) => c.rows.find((r) => r.key === k)?.amount != null).map((k) => [k, c.get(k)])) as Partial<Record<CostKey, number>>;
+    const dChange = mk('changeDesign', '', changeSheet(design, s.change, 1));
+    const list: DocInfo[] = [d0, mk('start', '착공내역서', start, { fixed: fixedOf(d0.cost) }), mk('change', `설계변경 내역서 ${s.change.name}`, changeSheet(start, s.change, s.bidRate), { fixed: fixedOf(dChange.cost) })];
     if (s.phaseOn) s.phases.forEach((p, i) => list.push(mk(`phase${i}`, `${p.name} 내역서 (${p.year})`, phaseSheet(contract, s.alloc, i))));
     if (s.progressOn) {
       const cur = s.rounds.length - 1;

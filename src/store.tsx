@@ -44,6 +44,10 @@ export interface State {
   info: ProjectInfo;
   /** 원가계산서에서 끈 비목 (설계·착공 등 모든 문서) */
   exclude?: CostKey[];
+  /** 설계가 고정 비목 (착공·설계변경에서 설계 금액 그대로) */
+  fixedKeys?: CostKey[];
+  /** 문서별 단수정리값 (부가세 포함) — 이윤에 TRUNC(값 ÷ 1.1) */
+  roundAdj?: Record<string, number>;
   design: Sheet;
   bidRate: number;
   phaseOn: boolean;
@@ -60,6 +64,8 @@ export interface State {
   changeFmt: ChangeFmt;
 }
 
+/** 낙찰 후에도 설계 금액으로 고정하는 비목 (국민건강·국민연금·노인장기요양·퇴직공제부금·산업안전보건관리비) */
+export const FIXED_DEFAULT: CostKey[] = ['health', 'pension', 'care', 'retire', 'safety'];
 export const EXAMPLE_ID = 'p-yongam';
 const IDX = 'naeyuk.projects';
 const CUR = 'naeyuk.cur';

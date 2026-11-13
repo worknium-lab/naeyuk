@@ -13,6 +13,9 @@ import {
 
 type Field = 'name' | 'spec' | 'unit' | 'qty' | 'lu' | 'mu' | 'eu';
 
+const DEF_W = [30, 22, 32, 240, 160, 58, 38, 86, 100, 76, 96, 76, 96, 76, 92, 70];
+const COLW_KEY = 'naeyuk.colw';
+
 interface Row { kind: 'line' | 'ns' | 'blank'; r?: FlatRow }
 
 /** lv: 0 = 모두, n = 레벨 n 이상 줄만 (● 3 > ○ 2 > …) */
@@ -52,6 +55,27 @@ export default function Estimate() {
   const findRef = useRef<HTMLInputElement>(null);
 
   const [lvView, setLvView] = useState(0);
+  // 열 너비 — 머리글 칸 오른쪽 끝을 끌어서 바꾸고, 두 번 누르면 내용에 맞춘다 (이 PC에 기억)
+  const [colW, setColW] = useState<number[]>(() => { try { const v = JSON.parse(localStorage.getItem(COLW_KEY) ?? 'null'); if (Array.isArray(v) && v.length === DEF_W.length) return v; } catch { /* */ } return DEF_W; });
+  const saveW = (w: number[]) => { try { localStorage.setItem(COLW_KEY, JSON.stringify(w)); } catch { /* */ } };
+  const gridRef = useRef<HTMLDivElement>(null);
+  const startDrag = (c: number, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, w0 = colW[c];
+    let last = colW;
+    const mv = (ev: MouseEvent) => { last = colW.map((w, i) => (i === c ? Math.max(24, Math.round(w0 + ev.clientX - x0)) : w)); setColW(last); };
+    const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); saveW(last); document.body.style.cursor = ''; };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+    document.body.style.cursor = 'col-resize';
+  };
+  const autoFit = (c: number) => {
+    const cells = gridRef.current?.querySelectorAll<HTMLElement>(`.cols.r > div:nth-child(${c + 1})`) ?? [];
+    let m = 0;
+    cells.forEach((el) => { m = Math.max(m, el.scrollWidth); });
+    const w = colW.map((x, i) => (i === c ? Math.max(c === 3 ? 120 : 30, m + 4) : x));
+    setColW(w); saveW(w);
+  };
+  const template = colW.map((w, i) => (i === 3 ? `minmax(${w}px,1fr)` : `${w}px`)).join(' ');
   const rows = useMemo(() => buildRows(sheet, collapsed, lvView), [sheet, collapsed, lvView]);
   const levelsUsed = useMemo(() => new Set(sheet.sections.flatMap((x) => flatten(x.lines)).map((r) => r.line.level).filter(Boolean)), [sheet]);
   const allCount = useMemo(() => sheet.sections.reduce((n, x) => n + flatten(x.lines).length, 0), [sheet]);
@@ -237,9 +261,21 @@ export default function Estimate() {
           </select>
         </label>
         <Link to="/project" style={{ fontSize: 12 }}>내역서 체계 보기</Link>
-        <span className="k">{doc === 'start' ? `낙찰률 ${+(s.bidRate * 100).toFixed(3)}% 적용 · 읽기 전용` : '낙찰률 미적용 · 칸을 두 번 누르면 고칩니다'}</span>
+        {doc === 'start' ? (
+          <label className="bidbox"><span>낙찰률</span>
+            <input type="text" key={s.bidRate} defaultValue={+(s.bidRate * 100).toFixed(4)} aria-label="낙찰률 (%)"
+              onBlur={(e) => {
+                const v = Number(e.target.value.replace(/[^0-9.]/g, '')) / 100;
+                if (!(v > 0 && v <= 1.2)) { toast('낙찰률은 % 로 넣으세요 (예: 87.745)'); e.target.value = String(+(s.bidRate * 100).toFixed(4)); return; }
+                if (v !== s.bidRate) { set((st) => ({ ...st, bidRate: v })); toast(`낙찰률 ${+(v * 100).toFixed(4)}% — 착공내역서 단가 = 설계 단가 × 낙찰률 (비목별 원 미만 버림)`); }
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { (e.target as HTMLInputElement).value = String(+(s.bidRate * 100).toFixed(4)); (e.target as HTMLInputElement).blur(); } }} />
+            <span>%</span><span className="k">적용 · 단가는 설계내역서에서 고칩니다</span>
+          </label>
+        ) : <span className="k">낙찰률 미적용 · 칸을 두 번 누르면 고칩니다</span>}
         <div style={{ flex: 1 }} />
         <label><span className="k">찾기</span>
+          <button type="button" className="vb" title="열 너비를 처음대로" onClick={() => { setColW(DEF_W); saveW(DEF_W); }}>열 너비 초기화</button>
           <input ref={findRef} type="text" value={find} onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doFind()} placeholder="품명·규격" style={{ width: 150, padding: '0 6px' }} />
         </label>
         <span className="k">단가 기준 2026년 하반기</span>
@@ -252,8 +288,9 @@ export default function Estimate() {
         <span style={{ marginLeft: 'auto' }}>Shift+F1~F4 레벨 · Shift+F10 해제 · F9 재계산 · 오른쪽 클릭 팝업메뉴</span>
       </>}
     >
-      <div className="grid" role="grid" aria-label="내역서" onClick={() => setMenu(null)}>
+      <div className="grid" ref={gridRef} role="grid" aria-label="내역서" onClick={() => setMenu(null)} style={{ ['--cols' as string]: template, minWidth: colW.reduce((a, b) => a + b, 0) + 2 } as React.CSSProperties}>
         <div className="cols hd" role="row">
+          {colW.map((_, c) => c >= 2 && <div key={'rz' + c} className="rz" style={{ gridRow: '1 / 3', gridColumn: c + 1 }} title="끌어서 열 너비 바꾸기 · 두 번 누르면 내용에 맞춤" onMouseDown={(e) => startDrag(c, e)} onDoubleClick={() => autoFit(c)} />)}
           <div className="g" style={{ gridRow: '1 / 3', gridColumn: 1, height: 'auto' }} />
           <div className="lv" style={{ gridRow: '1 / 3', gridColumn: 2, height: 'auto' }}>L</div>
           <div style={{ gridRow: '1 / 3', gridColumn: 3, height: 'auto' }}>공종</div>

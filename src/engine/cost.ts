@@ -34,6 +34,10 @@ export interface CostRow {
   amount: number | null;
   /** 이 비목을 넣을지 끌지 고를 수 있는지 */
   optional?: boolean;
+  /** 설계가 고정 비목 */
+  fixed?: boolean;
+  /** 단수정리값 (부가세 포함) — 이윤에 TRUNC(값 ÷ 1.1) */
+  roundAdj?: number;
   total?: boolean;
 }
 
@@ -49,6 +53,10 @@ export interface CostInput {
    * (착공 계약금액 단수 맞춤, 하도급액 = 대상 × 하도급율)
    */
   targetSupply?: number;
+  /** 설계가 고정 비목 — 낙찰률과 상관없이 이 금액을 그대로 쓴다 (건강·연금·요양·퇴직공제·산업안전 등) */
+  fixed?: Partial<Record<CostKey, number>>;
+  /** 단수정리값 (부가세 포함 금액) — 이윤에 TRUNC(단수정리값 ÷ 1.1) 을 더한다 */
+  roundAdj?: number;
 }
 
 const pctText = (r: number) => `${+(r * 100).toFixed(4)}%`;
@@ -65,7 +73,8 @@ export function costSheet(input: CostInput): CostResult {
   const R = { ...DEFAULT_RATES, ...input.rates };
   const ex = input.exclude ?? new Set<CostKey>();
   const on = (key: CostKey) => !ex.has(key);
-  const v = (key: CostKey, val: number) => (on(key) ? floor(val) : null);
+  const fx = input.fixed ?? {};
+  const v = (key: CostKey, val: number) => (on(key) ? (fx[key] !== undefined ? fx[key]! : floor(val)) : null);
 
   const mat = input.direct.m;
   const A = mat;
@@ -95,6 +104,8 @@ export function costSheet(input: CostInput): CostResult {
     adj = input.targetSupply - H;
     H = input.targetSupply;
   }
+  const manual = input.roundAdj ? Math.trunc(input.roundAdj / (1 + R.vat)) : 0;
+  if (manual) { adj += manual; H += manual; }
   const vat = floor(H * R.vat);
   const J = H + vat;
   const supplied = input.supplied ?? 0;
@@ -132,6 +143,15 @@ export function costSheet(input: CostInput): CostResult {
     { key: 'supplied', no: 'K', group: '', label: '관급자재대', amount: supplied || null },
     { key: 'L', no: 'L', group: '', label: '총공사비', amount: L, basis: '(J + K)', total: true },
   ];
+  for (const r of rows) if (fx[r.key] !== undefined && r.amount !== null) { r.basis = '설계가 고정'; r.fixed = true; }
+  if (input.roundAdj) {
+    const p = rows.find((r) => r.key === 'profit');
+    if (p) {
+      p.roundAdj = input.roundAdj;
+      const auto = adj - manual;
+      p.basis = `(B + C + E) × ${k(R.profit)}${auto ? (auto > 0 ? ' + ' : ' − ') + Math.abs(auto).toLocaleString() : ''} + TRUNC(${input.roundAdj.toLocaleString()} ÷ ${1 + R.vat})`;
+    }
+  }
   const map = new Map<CostKey, number>(rows.map((r) => [r.key, r.amount ?? 0]));
   map.set('adj', adj);
   return { rows, get: (key) => map.get(key) ?? 0, supply: H, total: J };

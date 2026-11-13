@@ -4,10 +4,12 @@ import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { exportXlsx } from '../xlsx';
 import { sheetRows, costRows, compareRows, docBook } from '../exports';
-import { useStore } from '../store';
+import { useStore, FIXED_DEFAULT } from '../store';
 import { useAsk } from '../ui/Ask';
 import { useDocs } from '../docs';
-import { won, DEFAULT_RATES, type CostRates } from '../engine';
+import { won, DEFAULT_RATES, type CostRates, type CostKey } from '../engine';
+
+const FIX_CHOICES: [CostKey, string][] = [['health', '건강보험료'], ['pension', '연금보험료'], ['care', '노인장기요양보험료'], ['retire', '퇴직공제부금비'], ['safety', '산업안전보건관리비'], ['env', '환경보전비'], ['ind', '산재보험료'], ['emp', '고용보험료']];
 
 const RATE_LABELS: [keyof CostRates, string][] = [
   ['il', '간접노무비'], ['ind', '산재보험료'], ['emp', '고용보험료'], ['health', '건강보험료'], ['pension', '연금보험료'],
@@ -27,6 +29,23 @@ export default function CostSheet() {
   const groupSpan: Record<string, number> = { 재료비: 4, 노무비: 3, 경비: 14 };
   const seen = new Set<string>();
   const off = new Set<string>(s.exclude ?? []);
+  const fixedKeys = s.fixedKeys ?? FIXED_DEFAULT;
+  const setRound = (v: number) => { set((st) => ({ ...st, roundAdj: { ...(st.roundAdj ?? {}), [key]: v } })); toast(`단수정리값 ${won(v, { zero: '0', tri: false })}원 — 이윤 ${won(Math.trunc(v / (1 + R.vat)), { zero: '0', tri: false })}원 반영`); };
+  const fitTotal = async () => {
+    const t = await ask({ title: '도급액 맞추기', label: `${d.name} 도급액(부가세 포함)을 얼마로 맞출까요? 단수정리값을 찾아 이윤에 TRUNC(값 ÷ 1.1)로 넣습니다.`, value: String(d.cost.total) });
+    if (!t) return;
+    const target = Number(t.replace(/[^0-9]/g, ''));
+    const cur = s.roundAdj?.[key] ?? 0;
+    // 단수정리값을 바꾸면 이윤(공급가액)이 TRUNC(x/1.1) 만큼, 도급액은 그 1.1배쯤 바뀐다 — 가까운 값부터 찾아본다
+    const vat = R.vat;
+    const H0 = d.cost.supply - Math.trunc(cur / (1 + vat));
+    const J = (x: number) => { const H = H0 + Math.trunc(x / (1 + vat)); return H + Math.floor(H * vat + 1e-9); };
+    const guess = Math.round((target - J(0)));
+    let best = guess, bestErr = Infinity;
+    for (let dx = -30; dx <= 30; dx++) { const x = guess + dx; const e = Math.abs(J(x) - target); if (e < bestErr || (e === bestErr && Math.abs(x) < Math.abs(best))) { best = x; bestErr = e; } }
+    setRound(best);
+    if (bestErr) toast(`정확히 ${won(target)}원은 안 되고 ${won(J(best))}원이 가장 가깝습니다 (단수정리값 ${won(best, { zero: '0', tri: false })})`);
+  };
   const toggleRow = () => {
     const r = d.cost.rows.find((x) => x.key === sel);
     if (!r) { toast('끄거나 켤 비목을 표에서 먼저 고르세요'); return; }
@@ -94,6 +113,19 @@ export default function CostSheet() {
             </tbody>
           </table>
           <button type="button" className="btn" onClick={() => set((st) => ({ ...st, rates: {} }))}>기본 요율로</button>
+          <h2 style={{ marginTop: 14 }}>단수정리 ({d.name})</h2>
+          <div className="hint">이윤 = 원래 이윤 수식 + TRUNC(단수정리값 ÷ 1.1, 0). 도급액(부가세 포함)이 1원씩 안 맞을 때 넣습니다.</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="k">단수정리값</span>
+            <input className="q" style={{ width: 110 }} key={`${key}-${s.roundAdj?.[key] ?? 0}`} defaultValue={s.roundAdj?.[key] ?? 0}
+              onBlur={(e) => { const v = Math.trunc(Number(e.target.value.replace(/[^0-9.-]/g, '')) || 0); if (v !== (s.roundAdj?.[key] ?? 0)) setRound(v); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />원</label>
+          <div className="calc"><div className="r"><span>이윤에 반영</span><b>{won(Math.trunc((s.roundAdj?.[key] ?? 0) / (1 + R.vat)), { zero: '0' })}</b></div><div className="r"><span>도급액</span><b>{won(d.cost.total)}</b></div></div>
+          <button type="button" className="btn" onClick={fitTotal}>도급액 맞추기…</button>
+          <h2 style={{ marginTop: 14 }}>설계가 고정 비목</h2>
+          <div className="hint">착공·설계변경 원가계산서에서 낙찰률과 상관없이 설계내역서 금액을 그대로 씁니다.</div>
+          {FIX_CHOICES.map(([k, lab]) => (
+            <label key={k} style={{ display: 'flex', gap: 6 }}><input type="checkbox" checked={fixedKeys.includes(k)} onChange={(e) => set((st) => { const cur = new Set(st.fixedKeys ?? FIXED_DEFAULT); if (e.target.checked) cur.add(k); else cur.delete(k); return { ...st, fixedKeys: [...cur] }; })} />{lab}</label>
+          ))}
         </aside>
       }
     >
@@ -119,7 +151,7 @@ export default function CostSheet() {
                   {inNet ? <td>{r.label}</td> : <td colSpan={3}>{r.label}</td>}
                   <td className="c">{r.no}</td>
                   <td className="n">{off.has(r.key) ? <span className="cf">뺌</span> : r.amount === null ? '' : won(r.amount, { zero: '0' })}</td>
-                  <td className="c">{r.rate ?? ''}</td>
+                  <td className="c">{r.fixed ? <span className="cf">설계가 고정</span> : r.rate ?? ''}</td>
                   <td>{r.basis ?? ''}</td>
                 </tr>
               );
