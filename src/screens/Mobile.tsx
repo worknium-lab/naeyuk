@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useStore } from '../store';
 import { useDocs } from '../docs';
+import { BudgetBar } from '../ui/BudgetBar';
 import { won, lineAmount, pct, qtyFmt, unitTotal } from '../engine';
 
 function Frame({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
@@ -41,6 +42,10 @@ export function MobileHome() {
           <div className="kv"><span>금회 기성금</span><b>{won(docs.get('progress').cost.total)}</b></div>
         </div>
       )}
+      <div className="card">
+        <h3>금액 구성</h3>
+        <BudgetBar compact />
+      </div>
       <div className="card">
         <h3>문서</h3>
         {docs.list.map((d) => (

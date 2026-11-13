@@ -1,4 +1,5 @@
 import { Fragment, useState, type CSSProperties } from 'react';
+import { BudgetBar } from '../ui/BudgetBar';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shell, FB, Group } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
@@ -135,6 +136,8 @@ export default function Project() {
       footer={<><span>문서 {2 + (s.phaseOn ? s.phases.length : 0) + (s.progressOn ? s.rounds.length : 0) + 1 + s.subs.length + 1}개</span><span>상자를 두 번 누르면 문서를 엽니다</span></>}
     >
       <div style={{ padding: '16px 20px' }}>
+        <h1 style={{ margin: '0 0 12px', fontSize: 14 }}>금액 구성</h1>
+        <div style={{ width: 860, marginBottom: 28 }}><BudgetBar /></div>
         <h1 style={{ margin: '0 0 16px', fontSize: 14 }}>내역서 흐름</h1>
         <div role="img" aria-label="설계 → 착공 → 차수별·기성·설계변경·하도급 → 준공" style={{ position: 'relative', width: 860, height: 490 }}>
           <svg width="860" height="490" viewBox="0 0 860 490" aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0 }}>
