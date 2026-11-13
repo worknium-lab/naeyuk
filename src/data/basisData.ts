@@ -100,5 +100,10 @@ export function basisData(): Basis {
       m.operator = r[2];
     }
   }
-  return { wages: W, mats, units, calcs, machines, fuel: { 경유: 1_832, 휘발유: 1_762 } };
+  // 견적단가 — 교량점검차는 업체 견적 최저가
+  const quotes = [
+    { no: '견적1', name: '교량점검차', spec: '플랫폼 13.0m', unit: '대', col: 'm' as const, method: 'min' as const,
+      vendors: [{ name: '○○중기', price: 1_700_000, date: '2022.08' }, { name: '△△장비', price: 1_850_000, date: '2022.08' }, { name: '□□렌탈', price: 1_780_000, date: '2022.08' }] },
+  ];
+  return { wages: W, mats, units, calcs, machines, fuel: { 경유: 1_832, 휘발유: 1_762 }, quotes };
 }

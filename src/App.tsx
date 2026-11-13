@@ -13,7 +13,7 @@ import Subcontract from './screens/Subcontract';
 import SubCompare from './screens/SubCompare';
 import Change from './screens/Change';
 import Guide from './screens/Guide';
-import { UnitCost, Calc, Machine, Material, Labor } from './screens/Basis';
+import { UnitCost, Calc, Machine, Material, Labor, Quote } from './screens/Basis';
 import { Pumsem, MarketPrice, RefCopy } from './screens/Popups';
 import { MobileHome, MobileEstimate, MobileCost } from './screens/Mobile';
 
@@ -44,6 +44,7 @@ export default function App() {
             <Route path="/machine" element={<Machine />} />
             <Route path="/material" element={<Material />} />
             <Route path="/labor" element={<Labor />} />
+            <Route path="/quote" element={<Quote />} />
             <Route path="/m" element={<MobileHome />} />
             <Route path="/m/estimate" element={<MobileEstimate />} />
             <Route path="/m/cost" element={<MobileCost />} />

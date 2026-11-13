@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Shell, FB, Group, usePopup } from '../ui/Shell';
 import { canPrint } from '../ui/Ask';
 import { useStore } from '../store';
-import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, machinePrice, type MachineDef } from '../engine';
+import { won, parseNum, usages, wageOf, normName, resolveSheet, costSheet, sectionAmount, calcPrice, machinePrice, quotePrice, type MachineDef, type QuoteDef } from '../engine';
 import { useDocs } from '../docs';
 import calcRows from '../data/calc.rows.json';
 import tables from '../data/tables.json';
@@ -454,6 +454,70 @@ export function Labor() {
           </tbody>
         </table>
       </div>
+    </Shell>
+  );
+}
+
+/* ---------- 견적단가 ---------- */
+export function Quote() {
+  const { s, set, design, toast } = useStore();
+  const qs = s.basis.quotes ?? [];
+  const [sel, setSel] = useState(qs[0]?.no ?? '');
+  const q = qs.find((x) => x.no === sel);
+  const upd = (no: string, patch: Partial<QuoteDef>) => set((st) => ({ ...st, basis: { ...st.basis, quotes: (st.basis.quotes ?? []).map((x) => (x.no === no ? { ...x, ...patch } : x)) } }));
+  const add = () => {
+    const no = `견적${qs.length + 1}`;
+    set((st) => ({ ...st, basis: { ...st.basis, quotes: [...(st.basis.quotes ?? []), { no, name: '새 견적 품목', spec: '', unit: '식', col: 'm', method: 'min', vendors: [{ name: '업체 1', price: 0 }, { name: '업체 2', price: 0 }, { name: '업체 3', price: 0 }] }] } }));
+    setSel(no);
+  };
+  const COL = { l: '노무비', m: '재료비', e: '경비' } as const;
+  return (
+    <Shell
+      doc="견적단가"
+      toolbar={<>
+        <Group label="견적"><FB icon="new" label="견적 추가" onClick={add} /><FB icon="search" label="사용처" onClick={() => toast(q ? `${q.no} 사용처: ${usages(s.basis, design, q.no).join(', ') || '없음'}` : '')} /></Group>
+      </>}
+      info={<><span className="k">업체 견적을 3곳 이상 받아 최저가·평균·지정 중 하나를 적용합니다. 내역서 줄의 비고에 견적N으로 연결됩니다.</span></>}
+      left={
+        <nav className="lp" aria-label="견적 목록">
+          <div className="lp-h">견적 품목</div>
+          {qs.map((x) => <a key={x.no} href="#" className={x.no === sel ? 'on' : ''} onClick={(e) => { e.preventDefault(); setSel(x.no); }}><span>{x.no} {x.name}</span><span className="st">{won(quotePrice(x))}</span></a>)}
+        </nav>
+      }
+    >
+      {q ? (
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 900 }}>
+          <table className="f" style={{ width: '100%' }}>
+            <tbody>
+              <tr><th>품명</th><td><input className="q" style={{ width: 260, textAlign: 'left' }} value={q.name} onChange={(e) => upd(q.no, { name: e.target.value })} /></td><th>규격</th><td><input className="q" style={{ width: 160, textAlign: 'left' }} value={q.spec} onChange={(e) => upd(q.no, { spec: e.target.value })} /></td><th>단위</th><td><input className="q" style={{ width: 50, textAlign: 'center' }} value={q.unit} onChange={(e) => upd(q.no, { unit: e.target.value })} /></td></tr>
+              <tr><th>비목</th><td><select value={q.col} onChange={(e) => upd(q.no, { col: e.target.value as QuoteDef['col'] })}>{(['l', 'm', 'e'] as const).map((c) => <option key={c} value={c}>{COL[c]}</option>)}</select></td>
+                <th>적용</th><td colSpan={3}><select value={q.method} onChange={(e) => upd(q.no, { method: e.target.value as QuoteDef['method'] })}><option value="min">최저가</option><option value="avg">평균 (원 미만 버림)</option><option value="pick">지정한 업체</option></select></td></tr>
+            </tbody>
+          </table>
+          <table className="f" style={{ width: '100%' }}>
+            <thead><tr><th>지정</th><th>업 체</th><th>견적일</th><th>견 적 가</th><th /></tr></thead>
+            <tbody>
+              {q.vendors.map((v, k) => {
+                const applied = quotePrice(q) === v.price && v.price > 0;
+                return (
+                  <tr key={k} className={applied ? 'sel' : ''}>
+                    <td className="c"><input type="radio" name={'pick' + q.no} checked={q.method === 'pick' && (q.pick ?? 0) === k} onChange={() => upd(q.no, { method: 'pick', pick: k })} /></td>
+                    <td><input className="q" style={{ width: 200, textAlign: 'left' }} value={v.name} onChange={(e) => upd(q.no, { vendors: q.vendors.map((x, kk) => (kk === k ? { ...x, name: e.target.value } : x)) })} /></td>
+                    <td><input className="q" style={{ width: 90, textAlign: 'left' }} value={v.date ?? ''} onChange={(e) => upd(q.no, { vendors: q.vendors.map((x, kk) => (kk === k ? { ...x, date: e.target.value } : x)) })} /></td>
+                    <td className="n"><input className="q" style={{ width: 120 }} value={v.price} onChange={(e) => upd(q.no, { vendors: q.vendors.map((x, kk) => (kk === k ? { ...x, price: Number(e.target.value) || 0 } : x)) })} /></td>
+                    <td className="c"><button type="button" className="tg" title="업체 지우기" onClick={() => upd(q.no, { vendors: q.vendors.filter((_, kk) => kk !== k) })}>×</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={() => upd(q.no, { vendors: [...q.vendors, { name: `업체 ${q.vendors.length + 1}`, price: 0 }] })}>업체 추가</button>
+          </div>
+          <div className="calc"><div className="r"><span>적용 단가 ({q.method === 'min' ? '최저가' : q.method === 'avg' ? '평균' : '지정'}) · {COL[q.col]}</span><b>{won(quotePrice(q))} 원/{q.unit}</b></div>
+            <div className="r"><span>사용처</span><span>{usages(s.basis, design, q.no).join(', ') || '없음'}</span></div></div>
+        </div>
+      ) : <div style={{ padding: 20 }}><button className="btn pri" onClick={add}>견적 추가</button></div>}
     </Shell>
   );
 }

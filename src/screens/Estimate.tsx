@@ -159,7 +159,7 @@ export default function Estimate() {
           <FB icon="calc" label="단가" title="단가산출" to="/calc" />
           <FB icon="unit" label="일위" title="일위대가" to="/unit" />
           <FB icon="market" label="표준" title="표준시장단가 검색 (팝업)" onClick={() => open('market')} />
-          <FB icon="quote" label="견적" title="견적단가 (준비 중)" onClick={() => toast('견적단가는 다음 단계에서 붙입니다')} />
+          <FB icon="quote" label="견적" title="견적단가" to="/quote" />
         </Group>
         <Group label="자료 관리">
           <FB icon="folder" label="공종" title="공종 넣기" onClick={insertGroup} />
@@ -288,7 +288,7 @@ export default function Estimate() {
               <div className="n">{won(a.m)}</div>
               {grp ? <div className="n" /> : cell(fr, 'eu', won(l.eu), 'n')}
               <div className="n">{won(a.e)}</div>
-              <div>{l.ref && <Link className="lk" style={l.link ? undefined : { opacity: .5, textDecoration: 'line-through' }} title={l.link ? `${l.ref}에 연결 — 근거를 고치면 단가가 바뀝니다` : '연결 해제 (직접 단가)'} to={l.ref.startsWith('단산') ? `/calc#${l.ref}` : `/unit?no=${l.ref}`} onClick={(e) => e.stopPropagation()}>{l.ref}</Link>}</div>
+              <div>{l.ref && <Link className="lk" style={l.link ? undefined : { opacity: .5, textDecoration: 'line-through' }} title={l.link ? `${l.ref}에 연결 — 근거를 고치면 단가가 바뀝니다` : '연결 해제 (직접 단가)'} to={l.ref.startsWith('단산') ? `/calc#${l.ref}` : l.ref.startsWith('견적') ? '/quote' : `/unit?no=${l.ref}`} onClick={(e) => e.stopPropagation()}>{l.ref}</Link>}</div>
             </div>
           );
         })}

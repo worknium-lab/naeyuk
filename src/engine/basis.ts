@@ -62,6 +62,24 @@ export function calcPrice(b: Basis, c: CalcDef): Price {
   return { l: floor(c.l + dl), m: floor(c.m + dm), e: floor(c.e + de) };
 }
 
+/** 견적단가 — 업체 견적 여러 곳 중 최저가/평균/지정 */
+export interface QuoteDef {
+  no: string; name: string; spec: string; unit: string;
+  /** 견적가가 들어갈 비목 */
+  col: 'l' | 'm' | 'e';
+  vendors: { name: string; price: number; date?: string }[];
+  method: 'min' | 'avg' | 'pick';
+  pick?: number;
+}
+
+export function quotePrice(q: QuoteDef): number {
+  const ps = q.vendors.map((v) => v.price).filter((x) => x > 0);
+  if (!ps.length) return 0;
+  if (q.method === 'pick') return q.vendors[q.pick ?? 0]?.price ?? 0;
+  if (q.method === 'avg') return Math.floor(ps.reduce((a, b) => a + b, 0) / ps.length);
+  return Math.min(...ps);
+}
+
 /** 기계경비 (시간당) — 손료 + 연료·잡품 + 운전사 노임 */
 export interface MachineDef {
   no: string; name: string; spec: string;
@@ -80,6 +98,7 @@ export interface Basis {
   units: UnitDef[];
   calcs: CalcDef[];
   machines?: MachineDef[];
+  quotes?: QuoteDef[];
   /** 연료 단가 (기계경비 적용기준) */
   fuel?: Record<string, number>;
 }
@@ -170,7 +189,10 @@ export function basisPrice(b: Basis, units: Map<string, UnitCalc>, ref?: string)
   const u = units.get(ref);
   if (u) return u.total;
   const c = b.calcs.find((x) => x.no === ref);
-  return c ? calcPrice(b, c) : undefined;
+  if (c) return calcPrice(b, c);
+  const q = b.quotes?.find((x) => x.no === ref);
+  if (q) { const p = quotePrice(q); return { l: q.col === 'l' ? p : 0, m: q.col === 'm' ? p : 0, e: q.col === 'e' ? p : 0 }; }
+  return undefined;
 }
 
 /** 근거에 연결된 내역 줄의 단가를 근거 값으로 바꾼다 (설계내역서) */

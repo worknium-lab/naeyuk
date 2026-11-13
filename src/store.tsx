@@ -3,7 +3,7 @@ import {
   applyRate, flatten, mapSheet, splitByRatio, SUB_DEFAULT_EXCLUDE, newId, resolveSheet, computeUnits, changeSheet,
   type Basis, type UnitCalc, type ChangeOrder, type CostKey, type CostRates, type Line, type PhaseAlloc, type Progress, type RoundMode, type Sheet,
 } from './engine';
-import { designSheet, PROJECT } from './data/project';
+import { designSheet, PROJECT, REFS } from './data/project';
 import { basisData } from './data/basisData';
 import { remoteStore, type Remote } from './platform';
 import { DEFAULT_FMT, type ChangeFmt } from './changeForms';
@@ -99,10 +99,12 @@ export function migrate(st: State): State {
   const b = st.basis ?? fresh;
   return {
     ...st,
+    design: mapSheet(st.design, (l) => (!l.children && !l.ref && REFS[l.name] ? { ...l, ref: REFS[l.name], link: true } : l)),
     basis: {
       ...b,
       machines: b.machines ?? fresh.machines,
       fuel: b.fuel ?? fresh.fuel,
+      quotes: b.quotes ?? fresh.quotes,
       calcs: b.calcs.map((c) => {
         const f = fresh.calcs.find((x) => x.no === c.no);
         return f ? { ...c, laborLines: c.laborLines ?? f.laborLines, pctOfLabor: c.pctOfLabor ?? f.pctOfLabor, machineLines: c.machineLines ?? f.machineLines } : c;

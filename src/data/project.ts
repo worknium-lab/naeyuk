@@ -4,7 +4,7 @@ import { parseNum, floor, type Line, type Sheet, type Section } from '../engine'
 type Raw = [number, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string[], string?];
 
 /** 품명 → 근거 (일위대가 호표 / 단가산출 / 시장단가) */
-const REFS: Record<string, string> = {
+export const REFS: Record<string, string> = {
   '단면보수': '제8호표',
   '표면처리': '제13호표',
   '배수구 청소': '제1호표',
@@ -18,6 +18,7 @@ const REFS: Record<string, string> = {
   '교통통제및안전처리': '단산1',
   '폐기물상차': '단산2',
   '중기운반': '단산6',
+  '교량점검차': '견적1',
 };
 
 /** 용암교 xls의 낙찰률 — 착공 단가 = 설계 단가 × 0.88479 (비목별 원 미만 버림) */

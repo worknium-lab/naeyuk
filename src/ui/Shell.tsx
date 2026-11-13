@@ -144,7 +144,7 @@ function WorkTabs({ set }: { set: TabSet }) {
       <NavLink to="/calc" className={cls}>단가산출</NavLink>
       <NavLink to="/machine" className={cls}>기계경비</NavLink>
       <a href="#" onClick={(e) => { e.preventDefault(); open('market'); }}>표준시장단가</a>
-      <a href="#" onClick={(e) => e.preventDefault()} title="견적단가 (준비 중)" style={{ color: '#8A929E' }}>견적단가</a>
+      <NavLink to="/quote" className={cls}>견적단가</NavLink>
       <NavLink to="/material" className={cls}>자재단가</NavLink>
       <NavLink to="/labor" className={cls}>노임단가</NavLink>
       <span className="sp" />
