@@ -288,3 +288,68 @@ table.imp-raw td.imp-no:hover { background: var(--sel); color: var(--accent); }
 .bidbox > span:first-child { font-weight: 700; color: var(--accent); }
 .bidbox input { width: 78px; height: 24px; text-align: right; font-weight: 700; border: 1px solid #D8C98A; background: #FFFDF0; padding: 0 6px; }
 .bidbox input:focus { outline: 2px solid #9DB4D6; }
+
+/* ============================================================
+   휴대폰 (폭 760px 이하) — PC 화면을 그대로 쓰되 세로로 쌓기
+   · 리본은 한 줄 가로 스크롤 · 왼쪽/오른쪽 패널은 위아래로 · 화면 전체가 세로 스크롤
+   · 내역서 표는 가로로 밀어서 봄 · 창(팝업)은 전체 화면
+   ============================================================ */
+@media (max-width: 760px) {
+  body { font-size: 14px; -webkit-text-size-adjust: 100%; }
+  .app { height: 100dvh; }
+  .titlebar { height: auto; min-height: 30px; padding: 4px 10px; gap: 8px; }
+  .titlebar > :first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .titlebar > * { flex-shrink: 0; }
+
+  .menu { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .menu::-webkit-scrollbar { display: none; }
+  .menu > div > button.rt, .menu > div > button.file { padding: 0 12px; }
+  .dd { position: fixed; top: 60px; left: 8px; right: 8px; min-width: 0; max-height: calc(100dvh - 80px); overflow: auto; }
+  .dd a, .dd button { height: 40px; font-size: 14px; }
+
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; min-height: 0; padding: 2px; scrollbar-width: none; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .grp { flex-shrink: 0; padding: 0 3px; }
+  .grp-l { display: none; }
+  .fb { min-width: 52px; height: 52px; font-size: 11px; }
+
+  .ib { gap: 6px 10px; padding: 6px 10px; }
+  .ib select, .ib input[type=text], .ib input[type=number], .vb { height: 32px; font-size: 13px; }
+  .ib input[type=text] { min-width: 0; max-width: 100%; }
+  .steps { overflow-x: auto; flex-wrap: nowrap; }
+  .steps li { flex-shrink: 0; }
+
+  /* 패널: 위아래로 쌓고 화면 전체가 스크롤 */
+  .body { flex-direction: column; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+  .body > .lp, .body > nav.lp { width: auto !important; max-height: 40dvh; flex: none; border-right: 0; border-bottom: 1px solid var(--line); }
+  .body > .rp, .body > aside.rp { width: auto !important; flex: none; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .body > .main { flex: none; min-height: 0; max-height: 80dvh; }
+  .pc-only { display: none !important; }
+  .body > .main.pad { max-height: none; min-height: 0; overflow: visible; }
+  .body > .main:only-child, .body > .main:only-of-type:not(:has(~ aside)):not(:has(~ nav)) { flex: 1 0 auto; max-height: none; }
+  .lp a, .lp .it { min-height: 40px; font-size: 14px; }
+  .rp { padding: 12px; }
+  .rp dl, .calc { font-size: 13px; }
+  .btn { height: 40px; font-size: 14px; }
+  table.f input.q, table.f input.qi { height: 26px; }
+
+  .tabs { scrollbar-width: none; }
+  .tabs a { padding: 9px 12px; font-size: 13px; }
+  .footer { gap: 4px 12px; padding: 4px 10px; font-size: 12px; }
+
+  /* 창 · 팝업: 전체 화면 */
+  .win { left: 0 !important; top: 0 !important; width: 100vw !important; height: 100dvh !important; border: 0; }
+  .win-t { height: 44px; font-size: 14px; }
+  .win-t button { width: 48px; height: 44px; font-size: 18px; }
+  .win .btns { flex-wrap: wrap; }
+  .win .btns .grow { flex-basis: 100%; }
+  .pm { width: min(250px, calc(100vw - 16px)); }
+  .pm button { height: 38px; font-size: 14px; }
+  .toast { width: max-content; max-width: calc(100vw - 32px); }
+
+  .host { flex-direction: column; height: auto; min-height: 100dvh; }
+  .host-nav { width: auto; flex-direction: row; overflow-x: auto; padding: 0; }
+  .host-nav b { padding: 10px 12px; white-space: nowrap; }
+  .host-nav a { white-space: nowrap; padding: 10px 12px; }
+  .mo { max-width: none; }
+}

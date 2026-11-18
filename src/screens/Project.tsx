@@ -151,9 +151,9 @@ export default function Project() {
     >
       <div style={{ padding: '16px 20px' }}>
         <h1 style={{ margin: '0 0 12px', fontSize: 14 }}>금액 구성</h1>
-        <div style={{ width: 860, marginBottom: 28 }}><BudgetBar /></div>
-        <h1 style={{ margin: '0 0 16px', fontSize: 14 }}>내역서 흐름</h1>
-        <div role="img" aria-label="설계 → 착공 → 차수별·기성·설계변경·하도급 → 준공" style={{ position: 'relative', width: 860, height: 490 }}>
+        <div style={{ width: 860, maxWidth: '100%', marginBottom: 28 }}><BudgetBar /></div>
+        <h1 className="pc-only" style={{ margin: '0 0 16px', fontSize: 14 }}>내역서 흐름</h1>
+        <div className="pc-only" role="img" aria-label="설계 → 착공 → 차수별·기성·설계변경·하도급 → 준공" style={{ position: 'relative', width: 860, height: 490 }}>
           <svg width="860" height="490" viewBox="0 0 860 490" aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0 }}>
             <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3D4450" /></marker></defs>
             <g fill="none" stroke="#3D4450" strokeWidth="1.3">

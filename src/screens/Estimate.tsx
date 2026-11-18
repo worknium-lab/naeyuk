@@ -285,7 +285,7 @@ export default function Estimate() {
         <span>표시 {rows.filter((r) => r.kind === 'line').length} / {allCount}줄</span>
         <span>순공사비 {won(main.t)}</span>
         <span>도급액 {won(cost.total)}</span>
-        <span style={{ marginLeft: 'auto' }}>Shift+F1~F4 레벨 · Shift+F10 해제 · F9 재계산 · 오른쪽 클릭 팝업메뉴</span>
+        <span className="pc-only" style={{ marginLeft: 'auto' }}>Shift+F1~F4 레벨 · Shift+F10 해제 · F9 재계산 · 오른쪽 클릭 팝업메뉴</span>
       </>}
     >
       <div className="grid" ref={gridRef} role="grid" aria-label="내역서" onClick={() => setMenu(null)} style={{ ['--cols' as string]: template, minWidth: colW.reduce((a, b) => a + b, 0) + 2 } as React.CSSProperties}>

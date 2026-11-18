@@ -18,7 +18,7 @@ export default function Guide() {
     <Shell doc="테스트 순서" tabs="none" mainClass="main pad">
       <h1 style={{ margin: 0, fontSize: 18 }}>테스트 순서</h1>
       <div className="hint">위에서부터 차례로 눌러 보세요. 입력한 내용은 이 브라우저에만 남습니다.</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))', gap: 12 }}>
         {STEPS.map((x) => (
           <section key={x.t} style={{ border: '1px solid #C9CED6', background: '#fff', padding: '12px 14px' }}>
             <h2 style={{ margin: '0 0 8px' }}><Link to={x.to}>{x.t}</Link></h2>
