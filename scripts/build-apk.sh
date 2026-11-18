@@ -3,6 +3,7 @@
 # 적산프로그램(가칭) 안드로이드 앱(APK) 빌드 — 홈 서버에서 실행
 #   cd ~/naeyuk && git pull && ./scripts/build-apk.sh
 # 결과: ~/naeyuk-apk/naeyuk.apk  → https://gw.worknium.co.kr/estimation/app.apk (로그인해야 받음)
+#       ~/worknium-site-apk/wnest/app.apk → https://www.worknium.co.kr/wnest (홈페이지 회사 ID wnest, 받기는 누구나 · 쓰려면 로그인)
 # 앱은 시작할 때 로그인 (서버 api.worknium.co.kr 계정 확인). 서명 키·암호는 ~/worknium-secrets (처음 한 번 만듦)
 # 안드로이드 SDK는 ~/android-sdk 에 처음 한 번 받음 (약 1GB)
 # ============================================================
@@ -48,3 +49,7 @@ cp "$REPO/android/app/build/outputs/apk/release/app-release.apk" "$OUT/naeyuk.ap
 echo "$N" > "$OUT/version-code"
 printf '{"version":"1.0.%s","size":%s,"built_at":"%s","commit":"%s"}\n' "$N" "$(stat -c %s "$OUT/naeyuk.apk")" "$(date -Iseconds)" "$(git -C "$REPO" log -1 --format=%h)" > "$OUT/latest.json"
 ok "$OUT/naeyuk.apk → https://gw.worknium.co.kr/estimation/app.apk"
+SITE="${SITE_APK_DIR:-$HOME/worknium-site-apk}/wnest"; mkdir -p "$SITE"
+cp "$OUT/naeyuk.apk" "$SITE/app.apk"
+printf '{"version":"1.0.%s","size":%s,"updated":"%s"}\n' "$N" "$(stat -c %s "$SITE/app.apk")" "$(date -u +%FT%TZ)" > "$SITE/app.json"
+ok "홈페이지 www.worknium.co.kr/wnest 앱 받기에도 올림"
