@@ -2,10 +2,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 const html = readFileSync('dist/index.html', 'utf8');
 const js = readFileSync('dist/assets/app.js', 'utf8').replace(/<\/script/gi, '<\\/script').replace(/\uFFFD/g, '\\uFFFD');
-const css = readFileSync('dist/assets/index.css', 'utf8');
+const css = readFileSync('dist/assets/app.css', 'utf8');
 const out = html
   .replace(/<script type="module"[^>]*src="\.\/assets\/app\.js"[^>]*><\/script>/, '')
-  .replace(/<link rel="stylesheet"[^>]*href="\.\/assets\/index\.css"[^>]*>/, () => `<style>${css}</style>`)
+  .replace(/<link rel="stylesheet"[^>]*href="\.\/assets\/app\.css"[^>]*>/, () => `<style>${css}</style>`)
   .replace('</body>', () => `<script type="module">${js}</script>\n  </body>`);
 writeFileSync('dist/single.html', out);
 console.log('dist/single.html', out.length, 'bytes');

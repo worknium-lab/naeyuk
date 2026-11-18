@@ -12,6 +12,13 @@ npm run build    # dist/ 에 정적 파일
 npm run build:single   # dist/single.html — JS·CSS를 넣은 한 파일 (웹에 바로 올리는 용도)
 ```
 
+## 로그인 · 서버 · 안드로이드 앱
+
+- 서버: https://gw.worknium.co.kr/estimation/ — 그룹웨어 `deploy/homeserver/setup.sh` 가 이 저장소를 받아 `VITE_REQUIRE_LOGIN=1` 로 빌드. 로그인해야 프로그램 파일을 받음 (nginx → DB `groupware.estimation_access`)
+- 로그인 화면 `login.html` (`src/auth/`). 아이디만 쓰면 `<아이디>@naeyuk.local`(적산 계정) → `<아이디>@worknium.local`(그룹웨어 대표·기술팀) 순서
+- 안드로이드 앱: 홈 서버에서 `./scripts/build-apk.sh` → `~/naeyuk-apk/naeyuk.apk` → https://gw.worknium.co.kr/estimation/app.apk (로그인해야 받음). 서명 키는 서버 `~/worknium-secrets/naeyuk-release.jks`
+- `npm run dev`·데스크톱·`build:single` 은 로그인 없이 그대로
+
 처음 쓰는 분은 앱의 **도움말 → 테스트 순서** (`/guide`)부터 보세요.
 
 입력한 내용은 브라우저(localStorage)에 저장됩니다. 처음 상태로 돌리려면 **파일 → 예시 데이터로 되돌리기**를 누르세요.

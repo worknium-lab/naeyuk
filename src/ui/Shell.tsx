@@ -4,6 +4,7 @@ import { Icon } from './icons';
 import { useStore, migrate } from '../store';
 import { useAsk, canPrint } from './Ask';
 import { saveFile } from '../platform';
+import { LOGIN_REQUIRED, logout, loginEmail } from '../auth/auth';
 
 /* ---------- 팝업 열기 (표준품셈 · 표준시장단가 · 참고 내역서) ---------- */
 export type PopupKind = 'pumsem' | 'market' | 'refcopy' | null;
@@ -69,6 +70,9 @@ function Menu({ toolbar }: { toolbar?: ReactNode }) {
       { label: '다른 내역서 열기 (참고)', act: () => openPopup('refcopy') }, '-',
       { label: '이 공사 처음 상태로 되돌리기', act: async () => { if (await ask({ title: '처음 상태로 되돌리기', label: `${s.info.name}에 입력한 내용을 지우고 처음 상태로 되돌릴까요?`, confirmOnly: true, ok: '되돌리기' })) { reset(); toast('처음 상태로 되돌렸습니다'); } } },
       { label: '모바일 화면', to: '/m' },
+      ...(LOGIN_REQUIRED ? ['-' as const,
+        ...(location.pathname.startsWith('/estimation') ? [{ label: '안드로이드 앱 받기 (APK)', act: () => { location.href = '/estimation/app.apk'; } }] : []),
+        { label: `로그아웃 (${loginEmail().split('@')[0]})`, act: logout }] : []),
     ],
   };
   const ribbons: Record<string, ReactNode> = {
